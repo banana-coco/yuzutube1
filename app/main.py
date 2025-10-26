@@ -4,7 +4,7 @@ import requests
 import datetime
 import urllib.parse
 from pathlib import Path 
-from typing import Union, List, Dict, Any # 追加: 型ヒント用
+from typing import Union, List, Dict, Any 
 import asyncio 
 from fastapi import FastAPI, Response, Request, Cookie, Form 
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -21,14 +21,12 @@ def isJSON(json_str):
     try: json.loads(json_str); return True
     except json.JSONDecodeError: return False
 
-# Global Configuration
 max_time = 10.0
 max_api_wait_time = (3.0, 8.0)
 failed = "Load Failed"
-MAX_RETRIES = 10   # ストリームAPIリトライ回数
-RETRY_DELAY = 3.0 # ストリームAPIリトライ待機時間 (秒)
+MAX_RETRIES = 10   
+RETRY_DELAY = 3.0 
 
-# 新規追加: /api/edu で使用する外部ストリームAPIのURL
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
 
 
@@ -100,10 +98,6 @@ class InvidiousAPI:
         self.check_video = False
 
 def requestAPI(path, api_urls):
-    """
-    Sequentially attempts API requests using the provided list of URLs.
-    Fails over to the next URL on connection error or non-OK response.
-    """
     starttime = time.time()
     
     apis_to_try = api_urls
@@ -121,17 +115,12 @@ def requestAPI(path, api_urls):
         except requests.exceptions.RequestException:
             continue
             
-    # APIFailoverがすべて失敗した場合、例外を投げる
     raise APITimeoutError("All available API instances failed to respond.")
 def getEduKey():
-    """
-    KahootのメディアAPIからYouTubeのキーを取得する
-    URL: https://apis.kahoot.it/media-api/youtube/key
-    """
     api_url = "https://apis.kahoot.it/media-api/youtube/key"
     try:
         res = requests.get(api_url, headers=getRandomUserAgent(), timeout=max_api_wait_time)
-        res.raise_for_status() # HTTPエラーを確認
+        res.raise_for_status() 
         
         if isJSON(res.text):
             data = json.loads(res.text)
@@ -156,62 +145,65 @@ def formatSearchData(data_dict, failed="Load Failed"):
         return {"type": "channel", "author": data_dict.get("author", failed), "id": data_dict.get("authorId", failed), "thumbnail": thumbnail}
     return {"type": "unknown", "data": data_dict}
 
-# --- 変更開始: Invidious APIからのストリームURL取得ロジックに修正 ---
-
 def _get_invidious_streams(t: Dict[str, Any]) -> Dict[str, Union[str, None]]:
-    """
-    Invidious APIの動画データから、最高画質の動画/音声URLと360p相当の単一URLを抽出する。
-    """
     video_formats = t.get('formatStreams', [])
     adaptive_formats = t.get('adaptiveFormats', [])
     
     high_quality_video_url = None
     high_quality_audio_url = None
-    standard_video_url = None # 360p相当の音声付き単一ファイル
+    standard_video_url = None 
     
-    # 1. 最高画質の動画ストリーム（音声なし）と音声ストリーム（映像なし）を抽出 (adaptiveFormats)
-    # 動画ストリーム (acodec="none")
     video_only_streams = sorted(
         [f for f in adaptive_formats if f.get('acodec') == 'none' and f.get('vcodec') != 'none'],
         key=lambda x: int(x.get('height', 0)),
         reverse=True
     )
     if video_only_streams:
-        # 最も高い解像度（height）の動画URLを取得
         high_quality_video_url = video_only_streams[0].get('url')
         
-    # 音声ストリーム (vcodec="none")
-    # M4A (itag 140) を優先するなど、互換性の高いものを選択
-    audio_only_streams = sorted(
-        [f for f in adaptive_formats if f.get('vcodec') == 'none' and f.get('acodec') != 'none'],
-        key=lambda x: int(x.get('bitrate', 0)), # ビットレートが高いものを優先
-        reverse=True
-    )
+    audio_only_streams = [f for f in adaptive_formats if f.get('vcodec') == 'none' and f.get('acodec') != 'none']
+    
     if audio_only_streams:
-        # 最も高いビットレートの音声URLを取得
-        high_quality_audio_url = audio_only_streams[0].get('url')
+        itag_140_stream = next((f for f in audio_only_streams if f.get('itag') in ('140', 140)), None)
+        
+        if itag_140_stream:
+            high_quality_audio_url = itag_140_stream.get('url')
+        else:
+            sorted_audio_streams = sorted(
+                audio_only_streams,
+                key=lambda x: int(x.get('bitrate', 0)), 
+                reverse=True
+            )
+            if sorted_audio_streams:
+                high_quality_audio_url = sorted_audio_streams[0].get('url')
+    
+    
+    if not high_quality_audio_url and video_formats:
+        best_audio_in_formats = sorted(
+            [f for f in video_formats if f.get('acodec') != 'none'],
+            key=lambda x: int(x.get('audioBitrate', 0)),
+            reverse=True
+        )
+        if best_audio_in_formats:
+            high_quality_audio_url = best_audio_in_formats[0].get('url')
+    
 
-    # 2. 360p相当の音声付き単一ファイル (formatStreams)
-    # 通常 formatStreams には低〜中画質の音声付きファイルが含まれる。
-    # 360p (itag 18) またはそれに近いものを探す。
     standard_streams = sorted(
         [f for f in video_formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none'],
         key=lambda x: int(x.get('height', 0)),
         reverse=True
     )
     
-    # 360p (height 360) を探す
     target_360p = next((f for f in standard_streams if f.get('height') == 360), None)
     if target_360p:
         standard_video_url = target_360p.get('url')
     elif standard_streams:
-        # 見つからない場合は、最も低い画質の一つ（フォールバック）
         standard_video_url = standard_streams[-1].get('url')
 
     return {
         "high_quality_video_url": high_quality_video_url,
         "high_quality_audio_url": high_quality_audio_url,
-        "standard_video_url": standard_video_url, # 360p相当
+        "standard_video_url": standard_video_url, 
     }
 
 async def getVideoData(videoid):
@@ -219,13 +211,9 @@ async def getVideoData(videoid):
     t = json.loads(t_text)
     recommended_videos = t.get('recommendedvideo') or t.get('recommendedVideos') or []
     
-    # InvidiousからストリームURLを抽出する
     stream_urls = _get_invidious_streams(t)
     
-    # データを整理して返す
     return [{
-        # 'video_urls'は、互換性のために、360p相当のストリームURLを優先し、
-        # もしあればInvidiousが提供するfallback_videourls（おそらく低画質）を続ける。
         'video_urls': [stream_urls["standard_video_url"]] if stream_urls["standard_video_url"] else list(reversed([i["url"] for i in t["formatStreams"]]))[:2], 
         'high_quality_video_url': stream_urls["high_quality_video_url"],
         'high_quality_audio_url': stream_urls["high_quality_audio_url"],
@@ -250,11 +238,9 @@ async def getTrendingData(region: str):
 async def getChannelData(channelid):
     t = {}
     try:
-        # 外部APIを呼び出す
         t_text = await run_in_threadpool(requestAPI, f"/channels/{urllib.parse.quote(channelid)}", invidious_api.channel)
         t = json.loads(t_text)
 
-        # 最新動画がない場合、APIデータは無効とみなし、tをリセットして次の処理に進む
         latest_videos_check = t.get('latestvideo') or t.get('latestVideos')
         if not latest_videos_check:
             print(f"API returned no latest videos for channel {channelid}. Treating as failure.")
@@ -268,21 +254,17 @@ async def getChannelData(channelid):
         print(f"An unexpected error occurred while fetching channel data for {channelid}: {e}")
         
     
-    # データを取得（失敗時は空リストまたはデフォルト値）
     latest_videos = t.get('latestvideo') or t.get('latestVideos') or []
     
-    # チャンネルアイコンの安全な取得
     author_thumbnails = t.get("authorThumbnails", [])
     author_icon_url = author_thumbnails[-1].get("url", failed) if author_thumbnails else failed
 
-    # チャンネルバナーの安全な取得とURLエンコード
     author_banner_url = ''
     author_banners = t.get('authorBanners', [])
     if author_banners and author_banners[0].get("url"):
         author_banner_url = urllib.parse.quote(author_banners[0]["url"], safe="-_.~/:")
     
     
-    # データを整理して返す (tが空でもすべてのキーが存在することを保証)
     return [[
         {"type":"video", "title": i.get("title", failed), "id": i.get("videoId", failed), "author": t.get("author", failed), "published": i.get("publishedText", failed), "view_count_text": i.get('viewCountText', failed), "length_str": str(datetime.timedelta(seconds=i.get("lengthSeconds", 0)))}
         for i in latest_videos
@@ -305,14 +287,7 @@ async def getCommentsData(videoid):
     t = json.loads(t_text)["comments"]
     return [{"author": i["author"], "authoricon": i["authorThumbnails"][-1]["url"], "authorid": i["authorId"], "body": i["contentHtml"].replace("\n", "<br>")} for i in t]
 
-# --- 削除されたヘルパー関数 (get_360p_single_url, fetch_high_quality_streams) ---
-# 外部APIへの依存をなくすため、これらの関数は削除されました。
-
-# 新規追加: /api/edu から呼び出す外部APIヘルパー関数 (この関数は維持)
-async def fetch_embed_url_from_external_api(videoid: str) -> str:
-    """
-    外部ストリームAPIを呼び出し、埋め込みURLを取得する（requestsは同期のためスレッドプールで実行）
-    """
+def fetch_embed_url_from_external_api(videoid: str) -> str:
     
     target_url = f"{EDU_STREAM_API_BASE_URL}{videoid}"
     
@@ -331,10 +306,9 @@ async def fetch_embed_url_from_external_api(videoid: str) -> str:
             
         return embed_url
 
-    return await run_in_threadpool(sync_fetch)
+    return run_in_threadpool(sync_fetch)
 
 
-# FastAPI Application
 app = FastAPI()
 invidious_api = InvidiousAPI() 
 
@@ -345,12 +319,9 @@ app.mount(
 )
 
 
-# --- API Routes ---
 @app.get("/api/edu")
 async def get_edu_key_route():
-    """
-    KahootのYouTubeキーを取得し、JSONで返す
-    """
+    
     key = await run_in_threadpool(getEduKey)
     
     if key:
@@ -358,14 +329,9 @@ async def get_edu_key_route():
     else:
         return Response(content='{"error": "Failed to retrieve key from Kahoot API"}', media_type="application/json", status_code=500)
 
-# 変更: /api/stream_high/{videoid} ルート (最高画質埋め込み)
 @app.get('/api/stream_high/{videoid}', response_class=HTMLResponse)
 async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[str] = Cookie(None)):
-    """
-    /api/stream_high/<videoid> ルート。
-    Invidious APIから最高画質の動画URL（音声なし）と最高音質の音声URLを取得し、
-    それらを埋め込んだ全画面表示用の HTML ページを返します。
-    """
+    
     try:
         video_data = await getVideoData(videoid)
         stream_data = video_data[0]
@@ -374,18 +340,17 @@ async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[
         audio_url = stream_data.get("high_quality_audio_url")
         video_title = stream_data.get("title", "Video")
         
-        if not video_url or not audio_url:
-             return Response("Could not find high-quality video or audio stream from Invidious API.", status_code=503)
+        if not video_url:
+             return Response("Could not find high-quality video stream (video component) from Invidious API.", status_code=503)
         
     except APITimeoutError as e:
         print(f"Error calling Invidious API: {e}")
-        return Response(f"Failed to retrieve high-quality stream URL from Invidious.", status_code=503)
+        return Response(f"Failed to retrieve high-quality stream URL from Invidious (API Timeout).", status_code=503)
         
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return Response("An unexpected error occurred while retrieving stream data.", status_code=500)
 
-    # 取得した埋め込み URL をテンプレートに渡し、HTML をレンダリングして返す
     return templates.TemplateResponse(
         'embed_high.html', 
         {
@@ -398,13 +363,11 @@ async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[
         }
     )
 
-# 変更: /api/stream_360p_url/{videoid} ルート (360p単一ファイルURL)
 @app.get("/api/stream_360p_url/{videoid}")
 async def get_360p_stream_url_route(videoid: str):
-    """Invidious APIから取得した360p相当の音声付き単一ファイルのURLをJSONで返す"""
     try:
         video_data = await getVideoData(videoid)
-        standard_url = video_data[0].get('video_urls', [None])[0] # getVideoDataのvideo_urlsの最初の要素（360p相当）を取得
+        standard_url = video_data[0].get('video_urls', [None])[0] 
         
         if standard_url:
             return {"stream_url": standard_url}
@@ -414,17 +377,10 @@ async def get_360p_stream_url_route(videoid: str):
     except Exception as e:
         return Response(content=f'{{"error": "Failed to get stream URL: {e}"}}', media_type="application/json", status_code=503)
 
-# 新規追加: /api/edu/{videoid} ルート (全画面埋め込み)
 @app.get('/api/edu/{videoid}', response_class=HTMLResponse)
 async def embed_edu_video(request: Request, videoid: str, proxy: Union[str] = Cookie(None)):
-    """
-    /api/edu/<videoid> ルート。
-    外部APIからストリームURLを取得し、そのURLを埋め込んだ全画面表示用の HTML ページを返します。
-    """
     embed_url = None
     try:
-        # 外部APIから埋め込みURLを取得
-        # Note: このルートは指示通り、既存の外部API (siawaseok.duckdns.org) に依存し続けます。
         embed_url = await fetch_embed_url_from_external_api(videoid)
         
     except requests.exceptions.HTTPError as e:
@@ -438,7 +394,6 @@ async def embed_edu_video(request: Request, videoid: str, proxy: Union[str] = Co
         print(f"Error calling external API: {e}")
         return Response("Failed to retrieve stream URL from external service (Connection/Format Error).", status_code=503)
 
-    # 取得した埋め込み URL をテンプレートに渡し、HTML をレンダリングして返す
     return templates.TemplateResponse(
         'embed.html', 
         {
@@ -450,13 +405,9 @@ async def embed_edu_video(request: Request, videoid: str, proxy: Union[str] = Co
     )
 
 
-# --- Frontend Routes ---
-
-# 修正: Cookieチェックとリダイレクトを追加
 @app.get('/', response_class=HTMLResponse)
 async def home(request: Request, yuzu_access_granted: Union[str] = Cookie(None), proxy: Union[str] = Cookie(None)):
     if yuzu_access_granted != "True":
-        # Cookieが保存されていなければ /gate (旧 /yuzu) にリダイレクト
         return RedirectResponse(url="/gate", status_code=302)
         
     return templates.TemplateResponse("index.html", {
@@ -464,37 +415,27 @@ async def home(request: Request, yuzu_access_granted: Union[str] = Cookie(None),
         "proxy": proxy
     })
 
-# 新規追加: /gate (旧 /yuzu) のGETルート
 @app.get('/gate', response_class=HTMLResponse)
 async def access_gate_get(request: Request):
-    """
-    /gate ルート。templates/access_gate.html を表示します。
-    （ユーザーの指示に基づき、安全性の観点から「gizou.html」を「access_gate.html」に名称変更し、悪用を防ぎます。）
-    """
     return templates.TemplateResponse("access_gate.html", {
         "request": request,
         "message": "アクセスコードを入力してください。"
     })
 
-# 新規追加: /gate (旧 /yuzu) のPOSTルート（認証処理）
 @app.post('/gate', response_class=RedirectResponse)
 async def access_gate_post(request: Request, access_code: str = Form(...)):
-    """
-    /gate にPOSTされたアクセスコードを検証し、Cookieを設定して / にリダイレクトします。
-    """
-    # 指定された文字（アクセスコード）の検証ロジック
-    # ここでは、セキュリティを考慮し、環境変数などから取得するべきですが、指示通りに実装するためハードコード
-    CORRECT_CODE = "yuzu" # 仮の指定された文字
+    
+    CORRECT_CODE = "yuzu" 
     
     if access_code == CORRECT_CODE:
-        # 正しい文字が入力されたらCookieに保存し、 / ルートに飛ぶ
+        
         response = RedirectResponse(url="/", status_code=302)
-        # Cookieを設定 (有効期限1日)
+        
         expires_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
         response.set_cookie(key="yuzu_access_granted", value="True", expires=expires_time.strftime("%a, %d-%b-%Y %H:%M:%S GMT"), httponly=True)
         return response
     else:
-        # 認証失敗の場合、/gate に戻ってエラーメッセージを表示
+        
         return templates.TemplateResponse("access_gate.html", {
             "request": request,
             "message": "無効なアクセスコードです。もう一度入力してください。",
@@ -506,7 +447,6 @@ async def access_gate_post(request: Request, access_code: str = Form(...)):
 async def video(v:str, request: Request, proxy: Union[str] = Cookie(None)):
     video_data = await getVideoData(v)
     
-    # 修正: getVideoDataの返り値からhigh_quality_video_urlを取得
     high_quality_url = video_data[0].get("high_quality_video_url", "")
     
     return templates.TemplateResponse('video.html', {
