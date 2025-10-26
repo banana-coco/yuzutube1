@@ -4,7 +4,7 @@ import requests
 import datetime
 import urllib.parse
 from pathlib import Path 
-from typing import Union
+from typing import Union, List, Dict, Any
 import asyncio 
 from fastapi import FastAPI, Response, Request, Cookie, Form # Formをインポート
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -159,16 +159,42 @@ def formatSearchData(data_dict, failed="Load Failed"):
 async def getVideoData(videoid):
     t_text = await run_in_threadpool(requestAPI, f"/videos/{urllib.parse.quote(videoid)}", invidious_api.video)
     t = json.loads(t_text)
-    recommended_videos = t.get('recommendedvideo') or t.get('recommendedVideos') or []
     
-    # InvidiousのフォールバックURL
-    fallback_videourls = list(reversed([i["url"] for i in t["formatStreams"]]))[:2]
+    # --- 修正・追加されたライブストリーム処理 ---
+    is_livestream = t.get('liveNow', False) or t.get('type') == 'livestream'
+    fallback_videourls = []
+    
+    if is_livestream:
+        hls_url = t.get('hlsUrl')
+        if hls_url:
+            # ドメインを https://manifest.googlevideo.com に変更
+            parsed_url = urllib.parse.urlparse(hls_url)
+            modified_url = parsed_url._replace(netloc='manifest.googlevideo.com', scheme='https').geturl()
+            fallback_videourls.append(modified_url)
+        else:
+            print(f"Warning: Live stream {videoid} is missing hlsUrl.")
+    else:
+        # 通常の動画処理
+        # InvidiousのフォールバックURL
+        if "formatStreams" in t:
+            fallback_videourls = list(reversed([i["url"] for i in t["formatStreams"]]))[:2]
+        # ---------------------------------------------
+
+    recommended_videos = t.get('recommendedvideo') or t.get('recommendedVideos') or []
     
     # データを整理して返す
     return [{
         'video_urls': fallback_videourls, 
-        'description_html': t["descriptionHtml"].replace("\n", "<br>"), 'title': t["title"],
-        'length_text': str(datetime.timedelta(seconds=t["lengthSeconds"])), 'author_id': t["authorId"], 'author': t["author"], 'author_thumbnails_url': t["authorThumbnails"][-1]["url"], 'view_count': t["viewCount"], 'like_count': t["likeCount"], 'subscribers_count': t["subCountText"]
+        'description_html': t.get("descriptionHtml", "").replace("\n", "<br>"), 
+        'title': t.get("title", "No Title"),
+        'length_text': str(datetime.timedelta(seconds=t.get("lengthSeconds", 0))), 
+        'author_id': t.get("authorId", failed), 
+        'author': t.get("author", failed), 
+        # authorThumbnailsが存在するかチェック
+        'author_thumbnails_url': t["authorThumbnails"][-1]["url"] if t.get("authorThumbnails") and t["authorThumbnails"] else failed, 
+        'view_count': t.get("viewCount", 0), 
+        'like_count': t.get("likeCount", 0), 
+        'subscribers_count': t.get("subCountText", "0 subscribers")
     }, [
         {"video_id": i["videoId"], "title": i["title"], "author_id": i["authorId"], "author": i["author"], "length_text": str(datetime.timedelta(seconds=i["lengthSeconds"])), "view_count_text": i["viewCountText"]}
         for i in recommended_videos
