@@ -329,25 +329,37 @@ def fetch_high_quality_streams(videoid: str) -> dict:
         res.raise_for_status()
         data = res.json()
         
-        # 応答例に合わせて、最高画質の動画URLと音声URLを抽出
-        high_quality_video_url = data.get("video", {}).get("videoUrl")
-        high_quality_audio_url = data.get("audio", {}).get("videoUrl") 
+        # 応答例に基づいて、最高画質の動画URLと音声URLを抽出
+        # HLSマニフェストURLが返されるが、高画質再生用テンプレート(embed_high.html)は
+        # 過去のバージョンでは分離されたストリームURLを要求していたため、
+        # ここでは便宜上、m3u8をそのまま返すように変更、または
+        # HLSマニフェストURLを「動画URL」として使用し、音声URLは空のままにする。
+        # 今回のAPIのレスポンス例から、分離された動画/音声URLは確認できないため、
+        # HLS (m3u8) URLを返すようにロジックを調整します。
         
+        hls_url = data.get("m3u8Url")
         
-        if not high_quality_video_url or not high_quality_audio_url:
-            raise ValueError("Could not find both high-quality video and audio streams from the external API.")
+        # HLS URLが存在しない、または適切でない場合はエラーとする
+        if not hls_url:
+            raise ValueError("Could not find m3u8Url in the external high-quality stream API response.")
             
         
-        # 応答例にタイトルが含まれていないため、ここではシンプルなタイトルを使用
+        # テンプレートに渡すデータ形式に合わせる
+        # テンプレート(embed_high.html)が動画URLと音声URLを別々に受け取る前提なら、
+        # ここではHLSを両方に渡すか、テンプレート側をHLS対応にする必要がある。
+        # 現状のコードの整合性を保つため、最高画質のHLS URLを`video_url`として返します。
+        # `audio_url`は使用しない（HLSマニフェストは両方を含むため）。
         return {
-            "video_url": high_quality_video_url, 
-            "audio_url": high_quality_audio_url,
-            "title": f"High Quality Stream for {videoid}" 
+            "video_url": hls_url, # HLS (m3u8) マニフェストURL
+            "audio_url": "", # HLSには動画と音声が含まれるため、音声URLは空にする
+            "title": f"{data.get('resolution', 'High Quality')} Stream for {videoid}" 
         }
 
     except requests.exceptions.HTTPError as e:
+        # HTTP 4xx, 5xx エラーの場合
         raise APITimeoutError(f"External stream API returned HTTP error: {e.response.status_code}") from e
     except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as e:
+        # 接続エラー、JSONデコードエラー、ValueErrorの場合
         raise APITimeoutError(f"Error processing external stream API response: {e}") from e
         
 async def fetch_embed_url_from_external_api(videoid: str) -> str:
