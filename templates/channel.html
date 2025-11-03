@@ -25,16 +25,20 @@
     <h2 style="font-size: 24px; margin-top: 40px;">Shorts</h2>
     <div class="shorts-videos-grid" style="display: flex; overflow-x: auto; gap: 16px; padding-bottom: 20px;">
         {% for video in shorts %}
-        <div class="short-grid-card" style="flex: 0 0 180px; width: 180px;"> <a href="/watch?v={{ video.videoId }}">
+        <div class="short-grid-card" style="flex: 0 0 180px; width: 180px;"> 
+            <a href="/watch?v={{ video.videoId }}">
                 <img src="/thumbnail?v={{ video.videoId }}" style="width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 8px;">
             </a>
-            <h3 style="font-size: 16px; margin: 8px 0; max-height: 40px; overflow: hidden;"><a href="/watch?v={{ video.videoId }}">{{ video.title }}</a></h3>
+            <h3 style="font-size: 16px; margin: 8px 0; max-height: 40px; overflow: hidden;">
+                <a href="/watch?v={{ video.videoId }}">{{ video.title }}</a>
+            </h3>
             <p style="color: var(--yt-sub-text); font-size: 14px;">再生回数: {{ video.viewCountText or 'N/A' }}</p>
         </div>
         {% endfor %}
     </div>
     <hr style="border: 0; height: 1px; background: var(--yt-sub-text); margin: 30px 0;">
     {% endif %}
+
     <h2 style="font-size: 24px; margin-top: 40px;">最新動画</h2>
     <div class="latest-videos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
         {% for video in results %}
