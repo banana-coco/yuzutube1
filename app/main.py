@@ -28,7 +28,7 @@ MAX_RETRIES = 10
 RETRY_DELAY = 3.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
-SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
+SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/" # Short APIのベースURLを追加
 
 
 invidious_api_data = {
@@ -343,23 +343,6 @@ def fetch_high_quality_streams(videoid: str) -> dict:
     except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as e:
         raise APITimeoutError(f"Error processing external stream API response: {e}") from e
 
-
-async def fetch_short_data_from_external_api(channelid: str) -> Dict[str, Any]:
-    target_url = f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}"
-    
-    def sync_fetch():
-        # 最大待機時間を流用
-        res = requests.get(
-            target_url, 
-            headers=getRandomUserAgent(), 
-        )
-        res.raise_for_status() 
-        
-        # 応答をそのままJSONとして返す
-        return res.json()
-
-    return await run_in_threadpool(sync_fetch)
-    
 async def fetch_embed_url_from_external_api(videoid: str) -> str:
     
     
@@ -381,6 +364,25 @@ async def fetch_embed_url_from_external_api(videoid: str) -> str:
         return embed_url
 
     return await run_in_threadpool(sync_fetch)
+
+# --- Short動画データ取得関数の追加 ---
+async def fetch_short_data_from_external_api(channelid: str) -> Dict[str, Any]:
+    """
+    指定された外部APIからShortsのデータを非同期で取得する。
+    """
+    target_url = f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}"
+    
+    def sync_fetch():
+        res = requests.get(
+            target_url, 
+            headers=getRandomUserAgent(), 
+            timeout=max_api_wait_time 
+        )
+        res.raise_for_status()
+        return res.json()
+
+    return await run_in_threadpool(sync_fetch)
+# -----------------------------------
 
 
 app = FastAPI()
@@ -476,21 +478,18 @@ async def embed_edu_video(request: Request, videoid: str, proxy: Union[str] = Co
             "proxy": proxy
         }
     )
+
+# --- /api/short/{channelid} エンドポイントの追加 ---
 @app.get("/api/short/{channelid}")
 async def get_short_data_route(channelid: str):
-    """
-    外部APIの応答をそのまま返す新しいShortsエンドポイント。
-    """
+    
     try:
         data = await fetch_short_data_from_external_api(channelid)
-        # 取得したJSONデータをそのまま返す
         return data
         
     except requests.exceptions.HTTPError as e:
-        # 外部APIからのHTTPエラーをクライアントに返す
         status_code = e.response.status_code
         print(f"Error calling external Shorts API (HTTP {status_code}) for {channelid}: {e}")
-        # エラーレスポンスのボディがある場合はそれを使用
         try:
             error_content = e.response.text
         except:
@@ -503,13 +502,14 @@ async def get_short_data_route(channelid: str):
         )
         
     except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as e:
-        # 接続エラー、タイムアウト、JSONデコードエラーなど
         print(f"Error calling external Shorts API for {channelid}: {e}")
         return Response(
             content=f'{{"error": "Failed to retrieve Shorts data from external service: {e!r}"}}', 
             media_type="application/json", 
             status_code=503
         )
+# --------------------------------------------------
+
 
 @app.get('/', response_class=HTMLResponse)
 async def home(request: Request, yuzu_access_granted: Union[str] = Cookie(None), proxy: Union[str] = Cookie(None)):
@@ -541,7 +541,7 @@ async def access_gate_post(request: Request, access_code: str = Form(...)):
         response = RedirectResponse(url="/", status_code=302)
         
         expires_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-        response.set_cookie(key="yuzu_access_granted", value="True", expires=expires_time.strftime("%a, %d-%b-%Y %H:%M:%S GMT"), httponly=True)
+        response.set_cookie(key="yuzu_access_granted", value="True", expires=expires_time.strftime("%a, %d-%b-%Y %H:%M:%S GMT"), httppy=True)
         return response
     else:
         
@@ -585,18 +585,14 @@ async def channel(channelid:str, request: Request, proxy: Union[str] = Cookie(No
     try:
         # 新しく追加したAPIラッパー関数を使用してShortsデータを取得
         shorts_data = await fetch_short_data_from_external_api(channelid)
-。
         
-        # 外部APIのレスポンス構造が不明なため、リスト形式であると仮定
         if isinstance(shorts_data, list):
             shorts_videos = shorts_data
         elif isinstance(shorts_data, dict) and "videos" in shorts_data:
-            # もしレスポンスが {"videos": [...]} のような形式なら
             shorts_videos = shorts_data["videos"]
         
     except Exception as e:
         print(f"Error fetching shorts data for {channelid}: {e}")
-        # エラーが発生した場合、空のリストのままにする
         shorts_videos = [] 
         
     return templates.TemplateResponse("channel.html", {
@@ -610,8 +606,8 @@ async def channel(channelid:str, request: Request, proxy: Union[str] = Cookie(No
         "subscribers_count": channel_info["subscribers_count"], 
         "tags": channel_info["tags"], 
         "proxy": proxy
-    })
-    
+    }) # <--- 行588付近 (ログの588行目はこの行の後に続く可能性あり)
+
 @app.get("/playlist", response_class=HTMLResponse)
 async def playlist(list:str, request: Request, page:Union[int, None]=1, proxy: Union[str] = Cookie(None)):
     playlist_data = await getPlaylistData(list, str(page))
