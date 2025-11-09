@@ -270,7 +270,7 @@ def get_fallback_hls_url(videoid: str) -> str:
 
 def get_360p_single_url(videoid: str) -> str:
     
-    YTDL_API_URL = f"https://server-thxk.onrender.com/stream/{videoid}"
+    YTDL_API_URL = f"https://server-nu-five-63.vercel.app/stream/{videoid}"
     
     
     try:
@@ -319,7 +319,7 @@ def get_360p_single_url(videoid: str) -> str:
 
 def fetch_high_quality_streams(videoid: str) -> dict:
     
-    YTDL_API_URL = f"https://server-thxk.onrender.com/high/{videoid}"
+    YTDL_API_URL = f"https://server-nu-five-63.vercel.app/high/{videoid}"
     
     try:
         
