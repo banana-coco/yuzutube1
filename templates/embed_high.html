@@ -29,11 +29,45 @@
 </head>
 <body>
     <div id="video-container">
-        <video id="video-player" controls playsinline src="{{ video_url }}">
+        <video id="video-player" controls playsinline>
             ブラウザがこの形式の動画ストリームをサポートしていません。
-            (この動画はHLS形式ですが、お使いのブラウザはネイティブHLS再生に対応していない可能性があります。)
         </video>
     </div>
 
-    </body>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script>
+        const video = document.getElementById('video-player');
+        const videoSrc = "{{ video_url }}"; // M3U8 URL
+
+        // 1. ブラウザがネイティブでHLSをサポートしているかを確認
+        // iOS/iPadOS/macOS (Safari) や一部のAndroidブラウザがこれに該当
+        const isNativeHLS = video.canPlayType('application/vnd.apple.mpegurl') || video.canPlayType('application/x-mpegurl');
+
+        if (isNativeHLS) {
+            // ✅ ネイティブサポートがある場合: HLS.jsを使わず、直接URLを設定
+            video.src = videoSrc;
+            video.addEventListener('loadedmetadata', function() {
+                video.play().catch(error => {
+                    console.log("Autoplay blocked. User interaction required.");
+                });
+            });
+            
+        } else if (Hls.isSupported()) {
+            // 💡 HLS.jsがサポートされている場合 (Chrome/Firefoxなど、ネイティブサポートがないデスクトップブラウザ)
+            const hls = new Hls();
+            hls.loadSource(videoSrc);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                video.play().catch(error => {
+                    console.log("Autoplay blocked. User interaction required.");
+                });
+            });
+            
+        } else {
+            // ❌ どちらの方式もサポートされていない場合のフォールバック
+            video.src = '';
+            video.parentElement.innerHTML = 'HLS動画の再生に必要な技術がお使いのブラウザでサポートされていません。';
+        }
+    </script>
+</body>
 </html>
