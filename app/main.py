@@ -226,19 +226,35 @@ async def getVideoData(videoid):
         
         raise APITimeoutError(f"New video API returned invalid JSON: {e}") from e
 
+    # チャンネルアイコンの安全な取得
+    author_thumbnails = t.get("author", {}).get("thumbnails", [])
+    author_icon_url = failed
     
+    if author_thumbnails:
+        last_thumbnail = author_thumbnails[-1]
+        if last_thumbnail and last_thumbnail.get("url"):
+            url = last_thumbnail["url"]
+            if url.startswith("//"):
+                author_icon_url = "https:" + url
+            elif url.startswith("http"):
+                author_icon_url = url
+
+    channel_id_from_data = t.get("author", {}).get("id")
+    if author_icon_url == failed and channel_id_from_data:
+        author_icon_url = f"https://yt3.googleusercontent.com/ytc/{channel_id_from_data}=s88-c-k-c0x00ffffff-no-rj"
+
     video_details = {
         'video_urls': [], 
         'description_html': t.get("description", {}).get("formatted", failed), 
         'title': t.get("title", failed),
-        'author_id': t.get("author", {}).get("id", failed), 
+        'author_id': channel_id_from_data or failed, 
         'author': t.get("author", {}).get("name", failed), 
-        'author_thumbnails_url': t.get("author", {}).get("thumbnail", failed), 
+        'author_thumbnails_url': author_icon_url, 
         'view_count': t.get("views", failed), 
         'like_count': t.get("likes", failed), 
         'subscribers_count': t.get("author", {}).get("subscribers", failed),
         'published_text': t.get("relativeDate", failed),
-        "length_text": "取得不能" 
+        "length_text": "" 
     }
     
     
@@ -246,7 +262,7 @@ async def getVideoData(videoid):
 
     
     return [video_details, recommended_videos]
-    
+
 async def getSearchData(q, page):
     datas_text = await run_in_threadpool(requestAPI, f"/search?q={urllib.parse.quote(q)}&page={page}&hl=jp", invidious_api.search)
     datas_dict = json.loads(datas_text)
