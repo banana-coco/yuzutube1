@@ -28,6 +28,7 @@ MAX_RETRIES = 10
 RETRY_DELAY = 3.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
+EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/" # 新しいAPIベースURL
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 
 
@@ -154,21 +155,74 @@ def formatSearchData(data_dict, failed="Load Failed"):
         return {"type": "channel", "author": data_dict.get("author", failed), "id": data_dict.get("authorId", failed), "thumbnail": thumbnail}
     return {"type": "unknown", "data": data_dict}
 
+def fetch_video_data_from_edu_api(videoid: str):
+    
+    target_url = f"{EDU_VIDEO_API_BASE_URL}{urllib.parse.quote(videoid)}"
+    
+    res = requests.get(
+        target_url, 
+        headers=getRandomUserAgent(), 
+        timeout=max_api_wait_time
+    )
+    res.raise_for_status()
+    return res.json()
+
+def format_related_video(related_data: dict) -> dict:
+    
+    if related_data.get("playlistId"):
+        
+        return {
+            "type": "playlist",
+            "title": related_data.get("title", failed), 
+            "id": related_data.get('playlistId', failed),
+            "author": related_data.get("channel", failed),
+            "thumbnail_url": f"https://i.ytimg.com/vi/{related_data.get('videoId')}/sddefault.jpg" if related_data.get('videoId') else failed
+        }
+    
+    return {
+        "type": "video", 
+        "video_id": related_data.get("videoId", failed), 
+        "title": related_data.get("title", failed), 
+        "author_id": related_data.get("channelId", failed),
+        "author": related_data.get("channel", failed), 
+        "length_text": related_data.get("badge", failed), 
+        "view_count_text": related_data.get("views", failed),
+        "published_text": related_data.get("uploaded", failed),
+        "thumbnail_url": f"https://i.ytimg.com/vi/{related_data['videoId']}/sddefault.jpg" if related_data.get('videoId') else failed
+    }
+
 async def getVideoData(videoid):
-    t_text = await run_in_threadpool(requestAPI, f"/videos/{urllib.parse.quote(videoid)}", invidious_api.video)
-    t = json.loads(t_text)
-    recommended_videos = t.get('recommendedvideo') or t.get('recommendedVideos') or []
     
-    fallback_videourls = list(reversed([i["url"] for i in t["formatStreams"]]))[:2]
+    try:
+        t = await run_in_threadpool(fetch_video_data_from_edu_api, videoid)
+    except requests.exceptions.RequestException as e:
+        
+        raise APITimeoutError(f"New video API failed: {e}") from e
+    except json.JSONDecodeError as e:
+        
+        raise APITimeoutError(f"New video API returned invalid JSON: {e}") from e
+
     
-    return [{
-        'video_urls': fallback_videourls, 
-        'description_html': t["descriptionHtml"].replace("\n", "<br>"), 'title': t["title"],
-        'length_text': str(datetime.timedelta(seconds=t["lengthSeconds"])), 'author_id': t["authorId"], 'author': t["author"], 'author_thumbnails_url': t["authorThumbnails"][-1]["url"], 'view_count': t["viewCount"], 'like_count': t["likeCount"], 'subscribers_count': t["subCountText"]
-    }, [
-        {"video_id": i["videoId"], "title": i["title"], "author_id": i["authorId"], "author": i["author"], "length_text": str(datetime.timedelta(seconds=i["lengthSeconds"])), "view_count_text": i["viewCountText"]}
-        for i in recommended_videos
-    ]]
+    video_details = {
+        'video_urls': [], 
+        'description_html': t.get("description", {}).get("formatted", failed), 
+        'title': t.get("title", failed),
+        
+        'author_id': t.get("author", {}).get("id", failed), 
+        'author': t.get("author", {}).get("name", failed), 
+        'author_thumbnails_url': t.get("author", {}).get("thumbnail", failed), 
+        'view_count': t.get("views", failed), 
+        'like_count': t.get("likes", failed), 
+        'subscribers_count': t.get("author", {}).get("subscribers", failed),
+        'published_text': t.get("relativeDate", failed),
+        
+    }
+    
+    
+    recommended_videos = [format_related_video(i) for i in t.get('related', [])]
+
+    
+    return [video_details, recommended_videos]
     
 async def getSearchData(q, page):
     datas_text = await run_in_threadpool(requestAPI, f"/search?q={urllib.parse.quote(q)}&page={page}&hl=jp", invidious_api.search)
@@ -515,7 +569,7 @@ async def home(request: Request, yuzu_access_granted: Union[str] = Cookie(None),
         
     return templates.TemplateResponse("index.html", {
         "request": request, 
-        "proxy": proxy,
+ "proxy": proxy,
         "results": trending_videos,
         "word": ""
     })
@@ -552,14 +606,36 @@ async def access_gate_post(request: Request, access_code: str = Form(...)):
 
 @app.get('/watch', response_class=HTMLResponse)
 async def video(v:str, request: Request, proxy: Union[str] = Cookie(None)):
-    video_data = await getVideoData(v)
+    
+    try:
+        video_data = await getVideoData(v)
+    except APITimeoutError as e:
+        
+        return Response(f"動画情報の取得に失敗しました: {e}", status_code=503)
+        
     
     high_quality_url = ""
     
+    
+    video_details = video_data[0]
+    recommended_videos = video_data[1]
+    
     return templates.TemplateResponse('video.html', {
-        "request": request, "videoid": v, "videourls": video_data[0]['video_urls'], 
+        "request": request, 
+        "videoid": v, 
+        "videourls": video_details['video_urls'], 
         "high_quality_url": high_quality_url,
-        "description": video_data[0]['description_html'], "video_title": video_data[0]['title'], "author_id": video_data[0]['author_id'], "author_icon": video_data[0]['author_thumbnails_url'], "author": video_data[0]['author'], "length_text": video_data[0]['length_text'], "view_count": video_data[0]['view_count'], "like_count": video_data[0]['like_count'], "subscribers_count": video_data[0]['subscribers_count'], "recommended_videos": video_data[1], "proxy":proxy
+        "description": video_details['description_html'], 
+        "video_title": video_details['title'], 
+        "author_id": video_details['author_id'], 
+        "author_icon": video_details['author_thumbnails_url'], 
+        "author": video_details['author'], 
+        "length_text": video_details.get('published_text', failed), 
+        "view_count": video_details['view_count'], 
+        "like_count": video_details['like_count'], 
+        "subscribers_count": video_details['subscribers_count'], 
+        "recommended_videos": recommended_videos, 
+        "proxy":proxy
     })
 
 @app.get("/search", response_class=HTMLResponse)
