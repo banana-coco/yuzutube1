@@ -612,7 +612,10 @@ async def access_gate_post(request: Request, access_code: str = Form(...)):
             "message": "無効なアクセスコードです。もう一度入力してください。",
             "error": True
         }, status_code=401)
-
+        
+@app.get('/bbs', response_class=HTMLResponse)
+async def bbs(request: Request):
+    return templates.TemplateResponse("bbs.html", {"request": request})
 
 @app.get('/watch', response_class=HTMLResponse)
 async def video(v:str, request: Request, proxy: Union[str] = Cookie(None)):
