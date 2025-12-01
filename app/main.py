@@ -36,7 +36,6 @@ SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 
 
 invidious_api_data = {
-    # 'video'は使用しないが、他のリストは残す
     'video': [], 
     'playlist': [
         'https://invidious.lunivers.trade/',
