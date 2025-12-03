@@ -97,10 +97,7 @@ class InvidiousAPI:
         self.check_video = False
 
 def requestAPI(path, api_urls):
-    """
-    複数のAPI URLに対してリクエストを並列で実行し、
-    最初に成功した応答を返す（動画ページ以外の高速化のための修正を復元）
-    """
+    
     
     apis_to_try = api_urls
     
@@ -108,7 +105,6 @@ def requestAPI(path, api_urls):
         raise APITimeoutError("No API instances configured for this type of request.")
         
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(apis_to_try)) as executor:
-        # 実行のためのタスクをサブミット
         future_to_api = {
             executor.submit(
                 requests.get, 
@@ -118,23 +114,19 @@ def requestAPI(path, api_urls):
             ): api for api in apis_to_try
         }
         
-        # 完了したタスクから順に結果を取得
         for future in concurrent.futures.as_completed(future_to_api, timeout=max_time):
             try:
                 res = future.result()
                 
                 if res.status_code == requests.codes.ok and isJSON(res.text):
-                    # 最初の成功した応答を返す
                     return res.text
                 
             except requests.exceptions.RequestException:
-                continue # APIが失敗したかタイムアウト。次のタスクの結果を待つ
+                continue
             except concurrent.futures.TimeoutError:
-                # 全てのリクエストがmax_time内に完了しなかった
                 break
             
     
-    # 全てのリクエストが失敗したか、指定時間内に完了しなかった
     raise APITimeoutError("All available API instances failed to respond or timed out.")
 
 def getEduKey():
@@ -181,9 +173,6 @@ def fetch_video_data_from_edu_api(videoid: str):
     return res.json()
 
 def format_related_video(related_data: dict) -> dict:
-    """
-    関連動画のデータをJinjaテンプレートで表示可能な形式に変換する
-    """
     
     
     is_playlist = related_data.get("playlistId") and related_data.get("playlistId") != related_data.get("videoId")
@@ -345,7 +334,6 @@ def get_360p_single_url(videoid: str) -> str:
     try:
         formats = get_ytdl_formats(videoid)
         
-        # 360pの結合ストリーム (itag 18) を探す
         target_format = next((
             f for f in formats 
             if f.get("itag") == "18" and f.get("url") 
@@ -462,12 +450,10 @@ async def fetch_bbs_posts():
 
     return await run_in_threadpool(sync_fetch)
 
-# 失敗しそう
-async def post_new_message(client_ip: str, name: str, body: str): # ★ client_ipを引数に追加
+async def post_new_message(client_ip: str, name: str, body: str):
     target_url = f"{BBS_EXTERNAL_API_BASE_URL}/post"
     
     def sync_post():
-        # クライアントIPをX-Forwarded-Forヘッダーに設定して外部BBSサーバーへ転送
         headers = {
             **getRandomUserAgent(), 
             "X-Forwarded-For": client_ip 
@@ -507,21 +493,19 @@ async def get_edu_key_route():
 
 @app.get('/api/stream_high/{videoid}', response_class=HTMLResponse)
 async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[str] = Cookie(None)):
-    """
-    M3U8優先の最高画質ストリームURLを取得し、埋め込みHTMLをレンダリングする
-    """
+    
     try:
-        # M3U8優先のロジックを使用
+        
         stream_data = await run_in_threadpool(fetch_high_quality_streams, videoid)
         
     except APITimeoutError as e:
         
-        # 503 Service Unavailable (APIアクセス失敗)
+        
         return Response(f"Failed to retrieve high-quality stream URL: {e}", status_code=503)
         
     except Exception as e:
         
-        # 500 Internal Server Error (予期せぬエラー)
+        
         return Response("An unexpected error occurred while retrieving stream data.", status_code=500)
 
     
@@ -529,7 +513,7 @@ async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[
         'embed_high.html', 
         {
             "request": request, 
-            # 修正後の fetch_high_quality_streams が返す M3U8 URL (video_url) を渡す
+            
             "video_url": stream_data["video_url"],
             "audio_url": stream_data["audio_url"],
             "video_title": stream_data["title"],
@@ -548,8 +532,10 @@ async def get_360p_stream_url_route(videoid: str):
     except APITimeoutError as e:
         
         
+        
         return Response(content=f'{{"error": "Failed to get stream URL after multiple attempts: {e}"}}', media_type="application/json", status_code=503)
     except Exception as e:
+        
         
         
         return Response(content=f'{{"error": "An unexpected error occurred: {e}"}}', media_type="application/json", status_code=500)
@@ -616,7 +602,7 @@ async def get_bbs_posts_route():
 @app.post("/api/bbs/post")
 async def post_new_message_route(request: Request):
     try:
-        # ★ FastAPI側でクライアントIPを取得
+        
         client_ip = request.headers.get("x-forwarded-for", "unknown").split(',')[0].strip()
         
         data = await request.json()
@@ -626,13 +612,13 @@ async def post_new_message_route(request: Request):
         if not body:
             return Response(content='{"detail": "Body is required"}', media_type="application/json", status_code=400)
 
-        # 投稿処理を外部APIに委譲し、FastAPI側で取得したclient_ipを渡す
+        
         post_response = await post_new_message(client_ip, name, body)
         return post_response
         
     except requests.exceptions.HTTPError as e:
         status_code = e.response.status_code
-        # 外部APIのエラーをクライアントに返す
+        
         return Response(content=e.response.text, media_type="application/json", status_code=status_code)
     except requests.exceptions.RequestException as e:
         return Response(content=f'{{"detail": "BBS API connection error or timeout: {e!r}"}}', media_type="application/json", status_code=503)
@@ -762,19 +748,18 @@ async def comments(request: Request, v:str):
     return templates.TemplateResponse("comments.html", {"request": request, "comments": comments_data})
 
 @app.get("/thumbnail")
-async def thumbnail(v:str): # <-- 非同期化を復元
+async def thumbnail(v:str):
     def sync_fetch_thumbnail(video_id: str):
-        # YouTubeのサムネイルサーバーから画像を同期的に取得
         res = requests.get(f"https://img.youtube.com/vi/{video_id}/0.jpg", timeout=(1.0, 3.0)) 
         res.raise_for_status()
         return res.content
 
     try:
-        # スレッドプールでブロッキングI/Oを実行
+        
         content = await run_in_threadpool(sync_fetch_thumbnail, v)
         return Response(content=content, media_type="image/jpeg")
     except requests.exceptions.RequestException:
-        # 失敗した場合は404を返す
+        
         return Response(status_code=404) 
 
 @app.get("/suggest")
