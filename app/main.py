@@ -456,7 +456,7 @@ async def post_new_message(client_ip: str, name: str, body: str):
     def sync_post():
         headers = {
             **getRandomUserAgent(), 
-            "X-Forwarded-For": client_ip 
+            "X-Original-Client-IP": client_ip # 修正点: カスタムヘッダーを使用
         }
         
         res = requests.post(
@@ -469,7 +469,6 @@ async def post_new_message(client_ip: str, name: str, body: str):
         return res.json()
 
     return await run_in_threadpool(sync_post)
-
 
 app = FastAPI()
 invidious_api = InvidiousAPI() 
