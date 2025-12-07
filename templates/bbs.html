@@ -6,37 +6,31 @@
     <title>掲示板</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
-        /* ======================================================= */
-        /* 🎨 カラースキーム定義 (ライトモード) */
-        /* ======================================================= */
         :root {
-            --primary-color: #007bff;        /* 青系 (アクセント) */
+            --primary-color: #007bff;
             --primary-hover: #0056b3;
-            --background-color: #f4f7f6;     /* ページ背景 */
-            --container-bg: #ffffff;         /* コンテナ/投稿背景 */
-            --form-bg: #e9ecef;              /* フォーム背景 */
-            --text-color: #212529;           /* 標準テキスト */
-            --secondary-text: #495057;       /* 補助テキスト */
+            --background-color: #f4f7f6;
+            --container-bg: #ffffff;
+            --form-bg: #e9ecef;
+            --text-color: #212529;
+            --secondary-text: #495057;
             --border-color: #ced4da;
             --post-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
             --info-text: #6c757d;
-            --id-color: #dc3545;             /* 赤系 (ID強調) */
+            --id-color: #dc3545;
             --error-color: #dc3545;
             --message-bg: #fff0f0;
         }
         
-        /* ======================================================= */
-        /* 🌙 カラースキーム定義 (ダークモード) */
-        /* ======================================================= */
         @media (prefers-color-scheme: dark) {
             :root {
-                --primary-color: #6caceb;        /* 明るい青 */
+                --primary-color: #6caceb;
                 --primary-hover: #4a8ac2;
-                --background-color: #121212;     /* 濃い背景 */
-                --container-bg: #1e1e1e;         /* コンテナ/投稿背景 */
-                --form-bg: #2d2d2d;              /* フォーム背景 */
-                --text-color: #e0e0e0;           /* 明るいテキスト */
-                --secondary-text: #b0b0b0;       /* 補助テキスト */
+                --background-color: #121212;
+                --container-bg: #1e1e1e;
+                --form-bg: #2d2d2d;
+                --text-color: #e0e0e0;
+                --secondary-text: #b0b0b0;
                 --border-color: #444444;
                 --post-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
                 --info-text: #999999;
@@ -46,9 +40,6 @@
             }
         }
 
-        /* ======================================================= */
-        /* 共通スタイル */
-        /* ======================================================= */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -60,12 +51,12 @@
             min-height: 100vh;
             background-color: var(--background-color);
             color: var(--text-color);
-            padding: 20px; /* 全体的にパディングを調整 */
+            padding: 20px;
             transition: background-color 0.4s, color 0.4s;
         }
         
         .container {
-            max-width: 960px; /* PCでの表示幅を少し広げる */
+            max-width: 960px;
             margin: 0 auto;
             background: var(--container-bg);
             padding: 30px;
@@ -74,7 +65,6 @@
             transition: background 0.4s, box-shadow 0.4s;
         }
 
-        /* タイトル */
         h1 {
             color: var(--primary-color);
             text-align: center;
@@ -94,7 +84,6 @@
             padding-left: 10px;
         }
 
-        /* 投稿フォームエリア */
         #post-form {
             display: flex;
             flex-direction: column;
@@ -106,7 +95,6 @@
             transition: background 0.4s;
         }
 
-        /* 入力フィールド */
         #post-form input[type="text"], 
         #post-form textarea {
             padding: 12px;
@@ -127,8 +115,20 @@
             resize: vertical;
             min-height: 120px;
         }
+        
+        .file-upload-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #preview-image {
+            max-width: 100px;
+            height: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            object-fit: contain;
+        }
 
-        /* 投稿ボタン */
         #post-form button {
             padding: 12px 20px;
             background-color: var(--primary-color);
@@ -151,7 +151,6 @@
             opacity: 0.7;
         }
         
-        /* 投稿エリア */
         #posts-container {
             display: flex;
             flex-direction: column; 
@@ -171,11 +170,10 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
-        /* 投稿ヘッダー */
         .post-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start; /* 縦方向の配置を調整 */
+            align-items: flex-start;
             margin-bottom: 10px;
             padding-bottom: 8px;
             border-bottom: 1px solid var(--border-color);
@@ -192,7 +190,6 @@
             font-weight: 700;
             color: var(--text-color);
             flex-grow: 1;
-            /* 名前が長すぎた場合の処理 */
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -219,8 +216,16 @@
             font-family: monospace;
             display: block;
         }
+        
+        .post-image {
+            max-width: 100%;
+            height: auto;
+            margin-top: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            cursor: zoom-in;
+        }
 
-        /* メッセージエリア */
         #loading-message, #empty-message {
             text-align: center;
             color: var(--info-text);
@@ -228,7 +233,6 @@
             font-style: italic;
         }
 
-        /* クールダウンメッセージ */
         #cooldown-message {
             position: fixed;
             top: 20px;
@@ -252,7 +256,6 @@
             transform: translateY(0);
         }
 
-        /* チェックボックス */
         #enable-enter-submit {
             transform: scale(1.0);
             cursor: pointer;
@@ -263,16 +266,13 @@
             font-size: 14px;
         }
 
-        /* ======================================================= */
-        /* 📱 レスポンシブデザイン (スマートフォン向け) */
-        /* ======================================================= */
         @media (max-width: 600px) {
             body {
                 padding: 10px;
             }
             .container {
                 padding: 15px;
-                border-radius: 0; /* スマホでは全幅を使う */
+                border-radius: 0;
                 box-shadow: none;
             }
             h1 {
@@ -283,7 +283,6 @@
                 font-size: 1.2em;
             }
             
-            /* 投稿ヘッダーを縦並びにする */
             .post-header {
                 flex-direction: column;
                 align-items: flex-start;
@@ -294,11 +293,11 @@
             }
             .post-name {
                 font-size: 1em;
-                white-space: normal; /* 折り返しを許可 */
+                white-space: normal;
                 overflow: visible;
                 text-overflow: clip;
                 width: 100%;
-                order: 2; /* 順番を少し下げる */
+                order: 2;
             }
             .post-info {
                 text-align: left;
@@ -329,6 +328,11 @@
             <input type="text" id="name" placeholder="名前">
             <textarea id="body" placeholder="本文" required></textarea>
             
+            <div class="file-upload-group">
+                <input type="file" id="image-file-input" accept="image/*">
+                <img id="preview-image" style="display: none;" alt="プレビュー画像">
+            </div>
+
             <div style="display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" id="enable-enter-submit" checked>
                 <label for="enable-enter-submit">Enterキーで送信を有効にする (Shift+Enterで改行)</label>
@@ -353,13 +357,20 @@
         let lastPostTime = 0;
         let isSubmitting = false; 
 
-        // クールダウンメッセージを表示する関数
+        let base64ImageString = null; 
+        const MAX_FILE_SIZE_MB = 50; 
+
+        const imageFileInput = document.getElementById('image-file-input');
+        const previewImage = document.getElementById('preview-image');
+        const bodyInput = document.getElementById('body');
+        const postForm = document.getElementById('post-form');
+        const submitButton = document.querySelector('#post-form button');
+
         function showCooldownMessage(remainingSeconds) {
             const messageElement = document.getElementById('cooldown-message');
             messageElement.textContent = `あと ${remainingSeconds}秒 待ってください。`;
             messageElement.classList.add('visible');
             
-            // 3秒後に非表示にする
             setTimeout(() => {
                 messageElement.classList.remove('visible');
             }, 3000); 
@@ -378,6 +389,40 @@
                 }
             });
         }
+        
+        function isBase64Image(content) {
+            return typeof content === 'string' && content.startsWith('data:image/');
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                base64ImageString = null;
+                previewImage.style.display = 'none';
+                previewImage.src = '';
+                return;
+            }
+            
+            if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                alert(`ファイルのサイズが大きすぎます。${MAX_FILE_SIZE_MB}MB以下にしてください。`);
+                event.target.value = null;
+                base64ImageString = null;
+                previewImage.style.display = 'none';
+                previewImage.src = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                base64ImageString = reader.result; 
+                
+                previewImage.src = base64ImageString;
+                previewImage.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        imageFileInput.addEventListener('change', handleImageUpload);
 
 
         async function fetchPosts(forceRefresh = false) {
@@ -388,8 +433,7 @@
             }
 
             try {
-                // 仮のAPIパス。実際の実装に合わせて変更してください。
-                const response = await fetch(`/api/bbs/posts`); 
+                const response = await fetch(`/posts`); 
                 if (!response.ok) {
                     let errorDetails = { detail: `HTTP ${response.status} エラー` };
                     try {
@@ -401,7 +445,6 @@
                 }
                 
                 const data = await response.json();
-                // reverse()を削除。APIが最新順(降順)で返すことを想定。
                 const posts = data.posts || []; 
                 const currentCount = posts.length;
 
@@ -418,13 +461,9 @@
 
                 container.innerHTML = '';
                 
-                // 投稿の総数を取得
                 const totalPosts = posts.length;
                 
                 posts.forEach((post, index) => {
-                    // 修正: 総数からインデックスを引くことで、最古の投稿から No.1 が始まる
-                    // index 0 (最新) => totalPosts - 0 = No.X
-                    // index N (最古) => totalPosts - N = No.1
                     const postNumber = totalPosts - index; 
 
                     const postElement = document.createElement('div');
@@ -440,7 +479,17 @@
                     });
                     
                     const safeName = escapeHTML(post.name || "名無し");
-                    const safeBody = escapeHTML(post.body || "");
+                    const bodyContent = post.body || "";
+
+                    let bodyHtml = '';
+
+                    if (isBase64Image(bodyContent)) {
+                        // Base64画像の場合: 直接埋め込み表示
+                        bodyHtml = `<img src="${bodyContent}" alt="投稿画像" class="post-image" onclick="window.open(this.src)">`;
+                    } else {
+                        // 通常のテキストの場合
+                        bodyHtml = `<div class="post-body">${escapeHTML(bodyContent)}</div>`;
+                    }
 
                     postElement.innerHTML = `
                         <div class="post-header">
@@ -451,9 +500,8 @@
                                 <span class="public-id">#${post.public_id}</span>
                             </div>
                         </div>
-                        <div class="post-body">${safeBody}</div>
+                        ${bodyHtml}
                     `;
-                    // posts配列は最新順であり、appendChildで追加するため、最新のものが一番上に表示される
                     container.appendChild(postElement);
                 });
 
@@ -472,7 +520,6 @@
 
         function handleEnterKey(event) {
             const isEnterSubmitEnabled = document.getElementById('enable-enter-submit').checked;
-            const bodyInput = document.getElementById('body');
             
             if (event.key === 'Enter' && isEnterSubmitEnabled) {
                 if (!event.shiftKey) {
@@ -481,7 +528,7 @@
                     const body = bodyInput.value.trim();
                     const isCooldown = (now - lastPostTime < POST_COOLDOWN_MS);
 
-                    if (isCooldown || isSubmitting || !body) {
+                    if (isCooldown || isSubmitting || (!body && !base64ImageString)) {
                         event.preventDefault(); 
                         if (isCooldown) {
                             const remainingSeconds = ((lastPostTime + POST_COOLDOWN_MS - now) / 1000).toFixed(1);
@@ -495,25 +542,22 @@
                 }
             }
         }
-        document.getElementById('body').addEventListener('keydown', handleEnterKey);
+        bodyInput.addEventListener('keydown', handleEnterKey);
 
 
         async function submitPost(event) {
             event.preventDefault();
 
             const nameInput = document.getElementById('name');
-            const bodyInput = document.getElementById('body');
-            const submitButton = document.querySelector('#post-form button');
-
             const name = nameInput.value.trim();
             const body = bodyInput.value.trim();
 
-            if (!body) {
-                alert("本文を入力してください。");
+            if (!body && !base64ImageString) {
+                alert("本文または画像を選択してください。");
                 return;
             }
             
-            if (body.length > 200) {
+            if (body && body.length > 200) {
                 alert(`本文は200文字以下にしてください。現在 ${body.length} 文字です。`);
                 return;
             }
@@ -530,13 +574,16 @@
             submitButton.textContent = '送信中...';
 
             try {
-                // 仮のAPIパス。実際の実装に合わせて変更してください。
-                const response = await fetch(`/api/bbs/post`, { 
+                const response = await fetch(`/post`, { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ name: name, body: body }),
+                    body: JSON.stringify({ 
+                        name: name, 
+                        body: body,
+                        image_base64: base64ImageString
+                    }),
                 });
 
                 if (!response.ok) {
@@ -548,10 +595,12 @@
                     }
                     throw new Error(errorData.detail || `投稿エラー: ${response.status}`);
                 }
-
-                
                 
                 bodyInput.value = '';
+                imageFileInput.value = '';
+                base64ImageString = null;
+                previewImage.src = '';
+                previewImage.style.display = 'none';
 
                 lastPostTime = Date.now(); 
                 
@@ -568,7 +617,7 @@
             }
         }
 
-        document.getElementById('post-form').addEventListener('submit', submitPost);
+        postForm.addEventListener('submit', submitPost);
         startAutoRefresh();
     </script>
 </body>
