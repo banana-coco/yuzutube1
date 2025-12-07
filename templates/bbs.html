@@ -574,7 +574,7 @@
             }
 
             try {
-                const response = await fetch(`/posts`); 
+                const response = await fetch(`/api/bbs/posts`); 
                 if (!response.ok) {
                     let errorDetails = { detail: `HTTP ${response.status} エラー` };
                     try {
@@ -728,7 +728,7 @@
             submitButton.textContent = '送信中...';
 
             try {
-                const response = await fetch(`/post`, { 
+                const response = await fetch(`/api/bbs/post`, { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
