@@ -4,40 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>掲示板</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght300;400;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #3f51b5;
-            --primary-hover: #303f9f;
-            --background-color: #e8eaf6;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --background-color: #f4f7f6;
             --container-bg: #ffffff;
-            --form-bg: #f5f5f5;
-            --text-color: #212121;
-            --secondary-text: #616161;
-            --border-color: #bdbdbd;
-            --post-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-            --info-text: #9e9e9e;
-            --id-color: #e91e63;
-            --error-color: #f44336;
-            --message-bg: #ffebee;
-            --radius: 8px;
+            --form-bg: #e9ecef;
+            --text-color: #212529;
+            --secondary-text: #495057;
+            --border-color: #ced4da;
+            --post-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --info-text: #6c757d;
+            --id-color: #dc3545;
+            --error-color: #dc3545;
+            --message-bg: #fff0f0;
         }
         
         @media (prefers-color-scheme: dark) {
             :root {
-                --primary-color: #7986cb;
-                --primary-hover: #5c6bc0;
-                --background-color: #1a1a2e;
-                --container-bg: #2c3a47;
-                --form-bg: #3c4b57;
+                --primary-color: #6caceb;
+                --primary-hover: #4a8ac2;
+                --background-color: #121212;
+                --container-bg: #1e1e1e;
+                --form-bg: #2d2d2d;
                 --text-color: #e0e0e0;
                 --secondary-text: #b0b0b0;
-                --border-color: #555555;
-                --post-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
-                --info-text: #9e9e9e;
-                --id-color: #ff80ab;
-                --error-color: #ff5252;
-                --message-bg: #4c3c5c;
+                --border-color: #444444;
+                --post-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+                --info-text: #999999;
+                --id-color: #ff7f7f;
+                --error-color: #ff7f7f;
+                --message-bg: #3c2a2a;
             }
         }
 
@@ -48,11 +47,11 @@
         }
 
         body {
-            font-family: 'Noto Sans JP', 'Roboto', sans-serif;
+            font-family: 'Noto Sans JP', sans-serif;
             min-height: 100vh;
             background-color: var(--background-color);
             color: var(--text-color);
-            padding: 30px 20px;
+            padding: 20px;
             transition: background-color 0.4s, color 0.4s;
         }
         
@@ -60,9 +59,9 @@
             max-width: 960px;
             margin: 0 auto;
             background: var(--container-bg);
-            padding: 40px;
-            border-radius: var(--radius);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: var(--post-shadow);
             transition: background 0.4s, box-shadow 0.4s;
         }
 
@@ -70,38 +69,37 @@
             color: var(--primary-color);
             text-align: center;
             font-weight: 700;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
             border-bottom: 3px solid var(--primary-color);
-            font-size: 2.2em;
+            font-size: 2em;
         }
 
         h2 {
             color: var(--text-color);
             font-weight: 700;
-            margin-bottom: 20px;
-            font-size: 1.5em;
-            border-left: 5px solid var(--primary-color);
-            padding-left: 12px;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
         }
 
         #post-form {
             display: flex;
             flex-direction: column;
-            gap: 18px;
-            margin-bottom: 40px;
-            padding: 25px;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 20px;
             background: var(--form-bg);
-            border-radius: var(--radius);
-            box-shadow: var(--post-shadow);
+            border-radius: 8px;
             transition: background 0.4s;
         }
 
         #post-form input[type="text"], 
         #post-form textarea {
-            padding: 14px 12px;
+            padding: 12px;
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            border-radius: 5px;
             font-size: 16px;
             background: var(--container-bg);
             color: var(--text-color);
@@ -110,105 +108,85 @@
         #post-form input[type="text"]:focus, 
         #post-form textarea:focus {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(63, 81, 181, 0.2);
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
             outline: none;
         }
         #post-form textarea {
             resize: vertical;
-            min-height: 100px;
+            min-height: 120px;
         }
         
         .file-upload-group {
             display: flex;
-            align-items: center;
-            gap: 20px;
-            padding: 10px 0;
-        }
-        #image-file-input {
-            padding: 0;
+            flex-direction: column;
+            gap: 10px;
         }
         #preview-image {
-            max-width: 80px;
+            max-width: 100px;
             height: auto;
             border: 1px solid var(--border-color);
             border-radius: 4px;
             object-fit: contain;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
 
         #post-form button {
-            padding: 14px 25px;
+            padding: 12px 20px;
             background-color: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
             transition: background-color 0.3s, transform 0.1s, opacity 0.3s;
-            letter-spacing: 0.5px;
         }
         #post-form button:hover:not(:disabled) {
             background-color: var(--primary-hover);
-            transform: translateY(-2px);
+            transform: translateY(-1px);
         }
         #post-form button:disabled {
             background-color: var(--border-color);
             color: var(--secondary-text);
             cursor: not-allowed;
-            opacity: 0.8;
-        }
-        
-        .settings-group {
-            display: flex; 
-            align-items: center; 
-            gap: 10px;
-            font-size: 14px;
-        }
-        #enable-enter-submit {
-            cursor: pointer;
-            accent-color: var(--primary-color);
-        }
-        #post-form label {
-            color: var(--secondary-text);
-            font-size: 14px;
+            opacity: 0.7;
         }
         
         #posts-container {
             display: flex;
             flex-direction: column; 
-            gap: 25px;
-            padding-top: 10px;
+            gap: 15px;
+            margin-top: 20px;
         }
         .post {
             background-color: var(--container-bg);
             padding: 20px;
-            border-radius: var(--radius);
-            box-shadow: var(--post-shadow);
-            border-left: 5px solid var(--primary-color);
-            transition: box-shadow 0.3s, background 0.4s;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid var(--primary-color);
+            transition: transform 0.2s, box-shadow 0.2s, background 0.4s;
         }
         .post:hover {
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.12);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         .post-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--form-bg);
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
         }
         .post-number {
-            font-size: 1.2em;
+            font-size: 1.1em;
             font-weight: 700;
             color: var(--primary-color);
             margin-right: 15px;
             flex-shrink: 0;
         }
         .post-name {
-            font-size: 1.1em;
+            font-size: 1.05em;
             font-weight: 700;
             color: var(--text-color);
             flex-grow: 1;
@@ -219,40 +197,23 @@
         
         .post-info {
             text-align: right;
-            font-size: 0.85em;
+            font-size: 0.8em;
             color: var(--info-text);
             line-height: 1.4;
             flex-shrink: 0;
-            margin-left: 20px;
-            display: flex;
-            gap: 15px;
-            align-items: center;
+            margin-left: 15px;
         }
-        
-        .reply-button {
-            font-size: 0.9em;
-            color: var(--info-text); 
-            cursor: pointer;
-            text-decoration: none;
-            transition: color 0.2s;
-            font-weight: 600;
-        }
-        .reply-button:hover {
-            color: var(--primary-color);
-        }
-        
         .post-body {
             white-space: pre-wrap;
             word-wrap: break-word;
-            line-height: 1.7;
+            line-height: 1.6;
             color: var(--secondary-text);
             font-size: 16px;
-            margin-bottom: 10px;
         }
         .public-id {
             font-weight: 600;
             color: var(--id-color);
-            font-family: 'Roboto Mono', monospace;
+            font-family: monospace;
             display: block;
         }
         
@@ -260,18 +221,16 @@
             max-width: 100%;
             height: auto;
             margin-top: 10px;
-            border-radius: 6px;
+            border-radius: 4px;
             border: 1px solid var(--border-color);
             cursor: zoom-in;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         #loading-message, #empty-message {
             text-align: center;
             color: var(--info-text);
-            padding: 40px;
+            padding: 30px;
             font-style: italic;
-            font-size: 1.1em;
         }
 
         #cooldown-message {
@@ -281,9 +240,9 @@
             background-color: var(--message-bg);
             color: var(--error-color);
             border: 1px solid var(--error-color);
-            padding: 15px 20px;
+            padding: 12px 18px;
             border-radius: 6px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
             z-index: 1000;
             opacity: 0;
             visibility: hidden;
@@ -297,54 +256,14 @@
             transform: translateY(0);
         }
 
-        #image-modal {
-            display: none;
-            position: fixed;
-            z-index: 2000; 
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0, 0, 0, 0.95); 
-            animation: fadeIn 0.3s;
-        }
-
-        #modal-content {
-            margin: auto;
-            display: block;
-            width: 95%;
-            max-width: 1400px; 
-            max-height: 95vh;
-            object-fit: contain;
-            user-select: none; 
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            border-radius: 6px;
-        }
-
-        .modal-close {
-            position: absolute;
-            top: 20px;
-            right: 45px;
-            color: #ffffff;
-            font-size: 50px;
-            font-weight: bold;
-            transition: 0.3s;
+        #enable-enter-submit {
+            transform: scale(1.0);
             cursor: pointer;
-            user-select: none;
+            accent-color: var(--primary-color);
         }
-
-        .modal-close:hover,
-        .modal-close:focus {
-            color: var(--primary-color);
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0 } 
-            to { opacity: 1 }
+        #post-form label {
+            color: var(--secondary-text);
+            font-size: 14px;
         }
 
         @media (max-width: 600px) {
@@ -352,25 +271,25 @@
                 padding: 10px;
             }
             .container {
-                padding: 20px;
+                padding: 15px;
                 border-radius: 0;
                 box-shadow: none;
             }
             h1 {
                 font-size: 1.8em;
-                margin-bottom: 25px;
+                margin-bottom: 20px;
             }
-            #post-form {
-                padding: 15px;
+            h2 {
+                font-size: 1.2em;
             }
+            
             .post-header {
                 flex-direction: column;
                 align-items: flex-start;
-                gap: 8px;
+                gap: 5px;
             }
             .post-number {
-                font-size: 1.1em;
-                order: 1;
+                font-size: 1em;
             }
             .post-name {
                 font-size: 1em;
@@ -385,10 +304,8 @@
                 margin-left: 0;
                 width: 100%;
                 order: 3;
-                justify-content: space-between;
-                padding-top: 5px;
             }
-            .reply-button {
+            .post-number {
                 order: 1;
             }
             #cooldown-message {
@@ -397,12 +314,6 @@
                 right: 10px;
                 left: 10px;
                 text-align: center;
-                font-size: 0.9em;
-            }
-            .modal-close {
-                top: 5px;
-                right: 15px;
-                font-size: 40px;
             }
         }
     </style>
@@ -415,14 +326,14 @@
         <form id="post-form">
             <h2>メッセージを投稿</h2>
             <input type="text" id="name" placeholder="名前">
-            <textarea id="body" placeholder="本文 (画像のみの投稿も可能です)"></textarea>
+            <textarea id="body" placeholder="本文" required></textarea>
             
             <div class="file-upload-group">
                 <input type="file" id="image-file-input" accept="image/*">
                 <img id="preview-image" style="display: none;" alt="プレビュー画像">
             </div>
 
-            <div class="settings-group">
+            <div style="display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" id="enable-enter-submit" checked>
                 <label for="enable-enter-submit">Enterキーで送信を有効にする (Shift+Enterで改行)</label>
             </div>
@@ -436,12 +347,7 @@
         </div>
     </div>
     
-    <div id="cooldown-message"></div>
-    
-    <div id="image-modal">
-        <span class="modal-close" onclick="closeModal()">&times;</span>
-        <img id="modal-content">
-    </div>
+    <div id="cooldown-message" class=""></div>
 
     <script>
         let lastFetchedCount = 0; 
@@ -459,51 +365,6 @@
         const bodyInput = document.getElementById('body');
         const postForm = document.getElementById('post-form');
         const submitButton = document.querySelector('#post-form button');
-        
-        const imageModal = document.getElementById('image-modal');
-        const modalContent = document.getElementById('modal-content');
-
-        
-        function openModal(imageSrc) {
-            modalContent.src = imageSrc;
-            imageModal.style.display = "block";
-        }
-
-        function closeModal() {
-            imageModal.style.display = "none";
-            modalContent.src = "";
-        }
-        
-        imageModal.onclick = function(event) {
-            if (event.target === imageModal) {
-                closeModal();
-            }
-        }
-        
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape' && imageModal.style.display === "block") {
-                closeModal();
-            }
-        });
-        
-        function replyToPost(postNumber) {
-            const replyText = `>>${postNumber} `;
-            const bodyTextarea = document.getElementById('body');
-            
-            const start = bodyTextarea.selectionStart;
-            const end = bodyTextarea.selectionEnd;
-
-            const currentValue = bodyTextarea.value;
-            
-            const newValue = replyText + currentValue.substring(0, start) + currentValue.substring(end);
-            
-            bodyTextarea.value = newValue;
-            
-            const newCursorPosition = replyText.length + start;
-            bodyTextarea.selectionStart = bodyTextarea.selectionEnd = newCursorPosition;
-            
-            bodyTextarea.focus();
-        }
 
         function showCooldownMessage(remainingSeconds) {
             const messageElement = document.getElementById('cooldown-message');
@@ -515,44 +376,20 @@
             }, 3000); 
         }
 
-        function isBase64Image(content) {
-            if (typeof content !== 'string') {
-                return false;
-            }
-            
-            if (!content.startsWith('data:image/') || !content.includes(';base64,')) {
-                return false;
-            }
-            
-            if (content.toLowerCase().includes('javascript:')) {
-                 return false;
-            }
-
-            const base64Index = content.indexOf(';base64,');
-            if (base64Index === -1) {
-                return false;
-            }
-            
-            const dataStart = base64Index + 8; 
-            const base64Data = content.substring(dataStart);
-            
-            const illegalChars = /[^A-Za-z0-9+/=]/;
-
-            if (illegalChars.test(base64Data)) {
-                return false;
-            }
-
-            const base64EndMatch = base64Data.match(/=+$/);
-            const base64End = base64EndMatch ? base64Data.length - base64EndMatch[0].length : base64Data.length;
-            
-            const trailingData = base64Data.substring(base64End);
-            if (trailingData.includes('"') || trailingData.includes('>') || trailingData.includes('<') || trailingData.includes('\'')) {
-                return false;
-            }
-
-            return true;
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return str;
+            return str.replace(/[&<>"']/g, function(match) {
+                switch (match) {
+                    case '&': return '&amp;';
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '"': return '&quot;';
+                    case "'": return '&#39;';
+                    default: return match;
+                }
+            });
         }
-
+        
         function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) {
@@ -573,17 +410,8 @@
 
             const reader = new FileReader();
             reader.onloadend = () => {
-                const result = reader.result;
-                if (!isBase64Image(result)) {
-                    alert("選択された画像データはセキュリティ上の問題があるため、無効です。");
-                    event.target.value = null;
-                    base64ImageString = null;
-                    previewImage.style.display = 'none';
-                    previewImage.src = '';
-                    return;
-                }
-
-                base64ImageString = result; 
+                base64ImageString = reader.result; 
+                
                 previewImage.src = base64ImageString;
                 previewImage.style.display = 'block';
             };
@@ -636,7 +464,7 @@
 
                     const postElement = document.createElement('div');
                     postElement.classList.add('post');
-                    
+
                     const formattedDate = new Date(post.created_at).toLocaleString('ja-JP', {
                         year: 'numeric',
                         month: '2-digit',
@@ -646,52 +474,35 @@
                         second: '2-digit'
                     });
                     
-                    const safeName = post.name || "名無し";
-                    const publicId = post.public_id || "----";
-                    const bodyContent = post.body || "";
-                    const bodyTextOnly = post.body_text_only || "";
-                    
-                    
-                    const isBodyImage = isBase64Image(bodyContent);
-                    
-                    const headerHtml = `
+                    const safeName = escapeHTML(post.name || "名無し");
+                    const textBody = post.body || "";
+                    const imageData = post.image_data || null;
+
+                    let bodyHtml = '';
+
+                    if (imageData) {
+                        bodyHtml += `<img src="${imageData}" alt="投稿画像" class="post-image" onclick="window.open(this.src)">`;
+                    }
+
+                    if (textBody) {
+                        bodyHtml += `<div class="post-body">${escapeHTML(textBody)}</div>`;
+                    }
+
+                    if (!bodyHtml) {
+                        bodyHtml = `<div class="post-body">投稿内容なし</div>`;
+                    }
+
+                    postElement.innerHTML = `
                         <div class="post-header">
                             <span class="post-number">No.${postNumber}</span>
-                            <span class="post-name"></span>
+                            <span class="post-name">${safeName}</span>
                             <div class="post-info">
-                                <span class="reply-button" onclick="replyToPost(${postNumber})">返信</span>
-                                <div>
-                                    <span>${formattedDate}</span>
-                                    <span class="public-id">#${publicId}</span>
-                                </div>
+                                <span>${formattedDate}</span>
+                                <span class="public-id">#${post.public_id}</span>
                             </div>
                         </div>
+                        ${bodyHtml}
                     `;
-                    postElement.innerHTML = headerHtml;
-                    
-                    postElement.querySelector('.post-name').textContent = safeName;
-                    
-                    const textToDisplay = isBodyImage ? bodyTextOnly : bodyContent;
-
-                    if (textToDisplay.trim() !== "") {
-                        const bodyDiv = document.createElement('div');
-                        bodyDiv.classList.add('post-body');
-                        
-                        bodyDiv.textContent = textToDisplay; 
-                        
-                        postElement.appendChild(bodyDiv);
-                    }
-                    
-                    
-                    if (isBodyImage) {
-                        const img = document.createElement('img');
-                        img.src = bodyContent;
-                        img.alt = '投稿画像';
-                        img.classList.add('post-image');
-                        img.onclick = function() { openModal(this.src); };
-                        postElement.appendChild(img);
-                    }
-                    
                     container.appendChild(postElement);
                 });
 
@@ -752,11 +563,6 @@
                 return;
             }
             
-            if (base64ImageString && !isBase64Image(base64ImageString)) {
-                alert("画像データが不正な形式または悪意のあるコードを含んでいます。投稿を拒否します。");
-                return;
-            }
-
             const now = Date.now();
             if (now - lastPostTime < POST_COOLDOWN_MS) {
                 const remainingSeconds = ((lastPostTime + POST_COOLDOWN_MS - now) / 1000).toFixed(1);
