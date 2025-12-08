@@ -78,7 +78,7 @@
             background-color: #fff;
         }
 
-        /* --- レイアウト変更 --- */
+        /* --- レイアウトとスタイルの調整 --- */
         .post-header {
             border-bottom: 1px dashed #aaa;
             padding-bottom: 5px;
@@ -91,13 +91,13 @@
 
         .post-left {
             display: flex;
-            gap: 10px; /* No.と名前の間のスペース */
+            gap: 10px; 
             align-items: center;
         }
 
         .post-right {
             display: flex;
-            gap: 10px; /* 時間と返信の間のスペース */
+            gap: 10px; 
             align-items: center;
             flex-shrink: 0;
             color: #666;
@@ -111,6 +111,14 @@
         .post-name {
             font-weight: bold;
             color: #333;
+        }
+        
+        /* IDのスタイル */
+        .public-id {
+            color: #008000; /* IDを少し目立つ色に */
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-left: -5px; /* 名前との間隔を詰める */
         }
 
         .reply-link {
@@ -286,6 +294,7 @@
                     });
                     
                     const safeName = escapeHTML(post.name || "名無し");
+                    const safePublicId = escapeHTML(post.public_id); // public_idを取得
                     const textBody = post.body || "";
 
                     let bodyHtml = '';
@@ -301,6 +310,7 @@
                             <div class="post-left">
                                 <span class="post-number">No.${postNumber}</span>
                                 <span class="post-name">${safeName}</span>
+                                <span class="public-id">ID:${safePublicId}</span> 
                             </div>
                             <div class="post-right">
                                 <span class="post-info">${formattedDate}</span>
