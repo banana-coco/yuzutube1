@@ -1,0 +1,12 @@
+{
+  "name": "yuzutube",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "forwardPorts": [3000],
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+  "postStartCommand": "uvicorn app.main:app --host=0.0.0.0 --port=3000 --reload"
+}
