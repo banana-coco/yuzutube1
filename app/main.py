@@ -27,7 +27,7 @@ max_time = 10.0
 max_api_wait_time = (3.0, 8.0)
 failed = "Load Failed"
 MAX_RETRIES = 10   
-RETRY_DELAY = 3.0 
+RETRY_DELAY = 5.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
 EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/"
