@@ -37,7 +37,7 @@ RETRY_DELAY = 5.0
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
 EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/"
-STREAM_YTDL_API_BASE_URL = "https://yudlp-b34c.onrender.com/stream/" 
+STREAM_YTDL_API_BASE_URL = "https://yudlp-ygug.onrender.com/stream/" 
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 BBS_EXTERNAL_API_BASE_URL = "https://server-bbs.vercel.app"
 
@@ -348,7 +348,7 @@ def get_360p_single_url(videoid: str) -> str:
         raise APITimeoutError(f"Error processing stream API response for 360p: {e}") from e
 
 def fetch_high_quality_streams(videoid: str) -> Dict[str, str]:
-    API_URL = f"https://yudlp-b34c.onrender.com/m3u8/{videoid}"
+    API_URL = f"https://yudlp-ygug.onrender.com/m3u8/{videoid}"
 
     try:
         response = requests.get(API_URL, timeout=15) 
