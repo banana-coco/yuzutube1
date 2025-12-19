@@ -6,13 +6,14 @@ import urllib.parse
 from pathlib import Path 
 from typing import Union, List, Dict, Any
 import asyncio 
-import concurrent.futures
 from fastapi import FastAPI, Response, Request, Cookie, Form 
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool 
 
+# YouTube Search Python のインポート
+from youtubesearchpython import VideosSearch, ChannelsSearch, PlaylistsSearch, Video, Channel, Playlist, Comments, Suggestions
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates")) 
@@ -22,18 +23,8 @@ class APITimeoutError(Exception): pass
 def getRandomUserAgent(): 
     return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'}
 
-def isJSON(json_str):
-    try: 
-        json.loads(json_str)
-        return True
-    except json.JSONDecodeError: 
-        return False
-
-max_time = 10.0
 max_api_wait_time = (3.0, 8.0)
 failed = "Load Failed"
-MAX_RETRIES = 10   
-RETRY_DELAY = 5.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
 EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/"
@@ -41,100 +32,13 @@ STREAM_YTDL_API_BASE_URL = "https://yudlp-ygug.onrender.com/stream/"
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 BBS_EXTERNAL_API_BASE_URL = "https://server-bbs.vercel.app"
 
-
-invidious_api_data = {
-    'video': [], 
-    'playlist': [
-        'https://invidious.lunivers.trade/',
-        'https://invidious.ducks.party/',
-        'https://super8.absturztau.be/',
-        'https://invidious.nikkosphere.com/',
-        'https://yt.omada.cafe/',
-        'https://iv.melmac.space/',
-        'https://iv.duti.dev/',
-    ], 
-    'search': [
-        'https://invidious.lunivers.trade/',
-        'https://inv.vern.cc/',
-        'https://yt.thechangebook.org/',
-        'https://invidious.vern.cc/',
-        'https://invidious.materialio.us/',
-        'https://invid-api.poketube.fun/',
-        'https://invidious.ducks.party/',
-        'https://super8.absturztau.be/',
-        'https://invidious.nikkosphere.com/',
-        'https://yt.omada.cafe/',
-        'https://iv.melmac.space/',
-        'https://iv.duti.dev/',
-    ], 
-    'channel': [
-        'https://invidious.lunivers.trade/',
-        'https://invid-api.poketube.fun/',
-        'https://invidious.ducks.party/',
-        'https://super8.absturztau.be/',
-        'https://invidious.nikkosphere.com/',
-        'https://yt.omada.cafe/',
-        'https://iv.melmac.space/',
-        'https://iv.duti.dev/',
-    ], 
-    'comments': [
-        'https://invidious.lunivers.trade/',
-        'https://invidious.ducks.party/',
-        'https://super8.absturztau.be/',
-        'https://invidious.nikkosphere.com/',
-        'https://yt.omada.cafe/',
-        'https://iv.duti.dev/',
-        'https://iv.melmac.space/',
-    ]
-}
-
-class InvidiousAPI:
-    def __init__(self):
-        self.all = invidious_api_data
-        self.video = list(self.all['video'])
-        self.playlist = list(self.all['playlist'])
-        self.search = list(self.all['search'])
-        self.channel = list(self.all['channel'])
-        self.comments = list(self.all['comments'])
-        self.check_video = False
-
-def requestAPI(path, api_urls):
-    apis_to_try = api_urls
-    
-    if not apis_to_try:
-        raise APITimeoutError("No API instances configured for this type of request.")
-        
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(apis_to_try)) as executor:
-        future_to_api = {
-            executor.submit(
-                requests.get, 
-                api + 'api/v1' + path, 
-                headers=getRandomUserAgent(), 
-                timeout=max_api_wait_time
-            ): api for api in apis_to_try
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_api, timeout=max_time):
-            try:
-                res = future.result()
-                
-                if res.status_code == requests.codes.ok and isJSON(res.text):
-                    return res.text
-                
-            except requests.exceptions.RequestException:
-                continue
-            except concurrent.futures.TimeoutError:
-                break
-            
-    raise APITimeoutError("All available API instances failed to respond or timed out.")
-
 def getEduKey():
     api_url = "https://apis.kahoot.it/media-api/youtube/key"
     try:
         res = requests.get(api_url, headers=getRandomUserAgent(), timeout=max_api_wait_time)
         res.raise_for_status() 
         
-        if isJSON(res.text):
+        if res.text and res.text.strip():
             data = json.loads(res.text)
             return data.get("key")
         
@@ -145,39 +49,339 @@ def getEduKey():
     
     return None
 
+def format_duration(seconds):
+    """秒数をHH:MM:SS形式に変換"""
+    if not seconds or seconds == 0:
+        return "0:00"
+    return str(datetime.timedelta(seconds=seconds))
 
-def formatSearchData(data_dict, failed="Load Failed"):
-    if data_dict["type"] == "video": 
-        return {
-            "type": "video", 
-            "title": data_dict.get("title", failed), 
-            "id": data_dict.get("videoId", failed), 
-            "author": data_dict.get("author", failed), 
-            "published": data_dict.get("publishedText", failed), 
-            "length": str(datetime.timedelta(seconds=data_dict.get("lengthSeconds", 0))), 
-            "view_count_text": data_dict.get("viewCountText", failed)
-        }
-    elif data_dict["type"] == "playlist": 
-        return {
-            "type": "playlist", 
-            "title": data_dict.get("title", failed), 
-            "id": data_dict.get('playlistId', failed), 
-            "thumbnail": data_dict.get("playlistThumbnail", failed), 
-            "count": data_dict.get("videoCount", failed)
-        }
-    elif data_dict["type"] == "channel":
-        thumbnail_url = data_dict.get('authorThumbnails', [{}])[-1].get('url', failed) if data_dict.get('authorThumbnails') else failed
-        if thumbnail_url != failed and not thumbnail_url.startswith("https"):
-            thumbnail = "https://" + thumbnail_url.lstrip("http://").lstrip("//")
+def format_view_count(views):
+    """再生回数を日本語形式に変換"""
+    if not views:
+        return "不明"
+    try:
+        views_int = int(views)
+        if views_int >= 100000000:
+            return f"{views_int / 100000000:.1f}億回視聴"
+        elif views_int >= 10000:
+            return f"{views_int / 10000:.1f}万回視聴"
         else:
-            thumbnail = thumbnail_url
-        return {
-            "type": "channel", 
-            "author": data_dict.get("author", failed), 
-            "id": data_dict.get("authorId", failed), 
-            "thumbnail": thumbnail
-        }
-    return {"type": "unknown", "data": data_dict}
+            return f"{views_int:,}回視聴"
+    except:
+        return str(views)
+
+def format_subscriber_count(subs):
+    """チャンネル登録者数を日本語形式に変換"""
+    if not subs:
+        return "不明"
+    try:
+        subs_str = str(subs).replace(',', '').replace('人', '').strip()
+        subs_int = int(subs_str)
+        if subs_int >= 100000000:
+            return f"{subs_int / 100000000:.1f}億人"
+        elif subs_int >= 10000:
+            return f"{subs_int / 10000:.1f}万人"
+        else:
+            return f"{subs_int:,}人"
+    except:
+        return str(subs)
+
+async def getVideoData(videoid):
+    """動画情報を取得"""
+    def sync_fetch():
+        try:
+            video_info = Video.getInfo(videoid)
+            
+            if not video_info:
+                raise APITimeoutError("動画情報の取得に失敗しました")
+            
+            # 説明文の取得
+            description = video_info.get('description', failed)
+            if isinstance(description, dict):
+                description = description.get('text', failed)
+            
+            # チャンネル情報の取得
+            channel_info = video_info.get('channel', {})
+            channel_id = channel_info.get('id', failed)
+            channel_name = channel_info.get('name', failed)
+            
+            # サムネイルの取得
+            thumbnails = channel_info.get('thumbnails', [])
+            channel_thumbnail = thumbnails[-1].get('url', failed) if thumbnails else failed
+            
+            # 視聴回数とライク数
+            view_count = video_info.get('viewCount', {}).get('text', failed)
+            likes = video_info.get('likes', failed)
+            
+            # 公開日
+            published_date = video_info.get('publishDate', failed)
+            
+            # 動画の長さ
+            duration_seconds = video_info.get('duration', {}).get('secondsText', 0)
+            try:
+                duration_seconds = int(duration_seconds)
+            except:
+                duration_seconds = 0
+            
+            # 関連動画の取得
+            related_videos = []
+            try:
+                suggestions = video_info.get('suggestions', [])
+                for item in suggestions[:20]:  # 最大20件
+                    if item.get('type') == 'video':
+                        related_videos.append({
+                            "type": "video",
+                            "id": item.get('id', failed),
+                            "video_id": item.get('id', failed),
+                            "title": item.get('title', failed),
+                            "author": item.get('channel', {}).get('name', failed),
+                            "author_id": item.get('channel', {}).get('id', failed),
+                            "length_text": format_duration(item.get('duration', {}).get('secondsText', 0)),
+                            "view_count_text": item.get('viewCount', {}).get('text', failed),
+                            "published_text": item.get('publishedTime', failed),
+                            "thumbnail_url": f"https://i.ytimg.com/vi/{item.get('id', '')}/sddefault.jpg"
+                        })
+            except Exception as e:
+                print(f"関連動画取得エラー: {e}")
+            
+            video_details = {
+                'video_urls': [],
+                'description_html': description.replace('\n', '<br>') if description != failed else failed,
+                'title': video_info.get('title', failed),
+                'author_id': channel_id,
+                'author': channel_name,
+                'author_thumbnails_url': channel_thumbnail,
+                'view_count': view_count,
+                'like_count': str(likes) if likes != failed else failed,
+                'subscribers_count': channel_info.get('subscribers', {}).get('simpleText', failed),
+                'published_text': published_date,
+                'length_text': format_duration(duration_seconds)
+            }
+            
+            return [video_details, related_videos]
+            
+        except Exception as e:
+            raise APITimeoutError(f"動画情報の取得エラー: {str(e)}")
+    
+    return await run_in_threadpool(sync_fetch)
+
+async def getSearchData(q, page):
+    """検索結果を取得"""
+    def sync_search():
+        try:
+            limit = 20
+            offset = (page - 1) * limit
+            
+            # 動画検索
+            videos_search = VideosSearch(q, limit=limit, offset=offset)
+            videos_result = videos_search.result()
+            
+            results = []
+            
+            if videos_result and 'result' in videos_result:
+                for video in videos_result['result']:
+                    duration_text = video.get('duration', '0:00')
+                    view_count = video.get('viewCount', {})
+                    
+                    results.append({
+                        "type": "video",
+                        "title": video.get('title', failed),
+                        "id": video.get('id', failed),
+                        "author": video.get('channel', {}).get('name', failed),
+                        "published": video.get('publishedTime', failed),
+                        "length": duration_text,
+                        "view_count_text": view_count.get('short', failed) if isinstance(view_count, dict) else str(view_count)
+                    })
+            
+            # ページ1の場合のみチャンネル検索も追加
+            if page == 1:
+                try:
+                    channels_search = ChannelsSearch(q, limit=3)
+                    channels_result = channels_search.result()
+                    
+                    if channels_result and 'result' in channels_result:
+                        for channel in channels_result['result']:
+                            thumbnails = channel.get('thumbnails', [])
+                            thumbnail_url = thumbnails[-1].get('url', failed) if thumbnails else failed
+                            
+                            results.append({
+                                "type": "channel",
+                                "author": channel.get('title', failed),
+                                "id": channel.get('id', failed),
+                                "thumbnail": thumbnail_url
+                            })
+                except:
+                    pass
+            
+            return results
+            
+        except Exception as e:
+            raise APITimeoutError(f"検索エラー: {str(e)}")
+    
+    return await run_in_threadpool(sync_search)
+
+async def getTrendingData(region: str):
+    """トレンド動画を取得（検索で代用）"""
+    try:
+        # トレンドの代わりに人気の動画を検索
+        videos_search = VideosSearch("", limit=20, region=region)
+        videos_result = videos_search.result()
+        
+        results = []
+        if videos_result and 'result' in videos_result:
+            for video in videos_result['result']:
+                duration_text = video.get('duration', '0:00')
+                view_count = video.get('viewCount', {})
+                
+                results.append({
+                    "type": "video",
+                    "title": video.get('title', failed),
+                    "id": video.get('id', failed),
+                    "author": video.get('channel', {}).get('name', failed),
+                    "published": video.get('publishedTime', failed),
+                    "length": duration_text,
+                    "view_count_text": view_count.get('short', failed) if isinstance(view_count, dict) else str(view_count)
+                })
+        
+        return results
+    except:
+        return []
+
+async def getChannelData(channelid):
+    """チャンネル情報を取得"""
+    def sync_fetch():
+        try:
+            channel_info = Channel.get(channelid)
+            
+            if not channel_info:
+                raise APITimeoutError("チャンネル情報の取得に失敗しました")
+            
+            # 最新動画の取得
+            latest_videos = []
+            videos = channel_info.get('uploads', {}).get('videos', [])
+            
+            for video in videos[:30]:  # 最大30件
+                duration_seconds = video.get('duration', {}).get('secondsText', 0)
+                try:
+                    duration_seconds = int(duration_seconds)
+                except:
+                    duration_seconds = 0
+                
+                view_count = video.get('viewCount', {})
+                
+                latest_videos.append({
+                    "type": "video",
+                    "title": video.get('title', failed),
+                    "id": video.get('id', failed),
+                    "author": channel_info.get('title', failed),
+                    "published": video.get('publishedTime', failed),
+                    "view_count_text": view_count.get('text', failed) if isinstance(view_count, dict) else str(view_count),
+                    "length_str": format_duration(duration_seconds)
+                })
+            
+            # チャンネルアイコン
+            thumbnails = channel_info.get('thumbnails', [])
+            channel_icon = thumbnails[-1].get('url', failed) if thumbnails else failed
+            
+            # チャンネルバナー
+            banners = channel_info.get('banners', [])
+            channel_banner = banners[-1].get('url', '') if banners else ''
+            
+            # 説明文
+            description = channel_info.get('description', 'このチャンネルのプロフィール情報は見つかりませんでした。')
+            if isinstance(description, dict):
+                description = description.get('text', 'このチャンネルのプロフィール情報は見つかりませんでした。')
+            
+            # チャンネル登録者数
+            subscribers = channel_info.get('subscribers', {})
+            if isinstance(subscribers, dict):
+                subscribers_text = subscribers.get('simpleText', failed)
+            else:
+                subscribers_text = format_subscriber_count(subscribers)
+            
+            channel_data = {
+                "channel_name": channel_info.get('title', "チャンネル情報取得失敗"),
+                "channel_icon": channel_icon,
+                "channel_profile": description.replace('\n', '<br>'),
+                "author_banner": channel_banner,
+                "subscribers_count": subscribers_text,
+                "tags": channel_info.get('tags', [])
+            }
+            
+            return [latest_videos, channel_data]
+            
+        except Exception as e:
+            raise APITimeoutError(f"チャンネル情報の取得エラー: {str(e)}")
+    
+    return await run_in_threadpool(sync_fetch)
+
+async def getPlaylistData(listid, page):
+    """プレイリスト情報を取得"""
+    def sync_fetch():
+        try:
+            playlist_info = Playlist.get(listid)
+            
+            if not playlist_info:
+                raise APITimeoutError("プレイリスト情報の取得に失敗しました")
+            
+            videos = playlist_info.get('videos', [])
+            
+            # ページネーション
+            limit = 20
+            start = (page - 1) * limit
+            end = start + limit
+            
+            results = []
+            for video in videos[start:end]:
+                results.append({
+                    "title": video.get('title', failed),
+                    "id": video.get('id', failed),
+                    "authorId": video.get('channel', {}).get('id', failed),
+                    "author": video.get('channel', {}).get('name', failed),
+                    "type": "video"
+                })
+            
+            return results
+            
+        except Exception as e:
+            raise APITimeoutError(f"プレイリスト情報の取得エラー: {str(e)}")
+    
+    return await run_in_threadpool(sync_fetch)
+
+async def getCommentsData(videoid):
+    """コメントを取得"""
+    def sync_fetch():
+        try:
+            comments_obj = Comments(videoid)
+            comments_data = comments_obj.comments
+            
+            if not comments_data or 'result' not in comments_data:
+                return []
+            
+            results = []
+            for comment in comments_data['result'][:50]:  # 最大50件
+                author_thumbnails = comment.get('author', {}).get('thumbnails', [])
+                author_icon = author_thumbnails[-1].get('url', failed) if author_thumbnails else failed
+                
+                # コメント本文
+                content = comment.get('content', '')
+                if isinstance(content, dict):
+                    content = content.get('text', '')
+                
+                results.append({
+                    "author": comment.get('author', {}).get('name', failed),
+                    "authoricon": author_icon,
+                    "authorid": comment.get('author', {}).get('id', failed),
+                    "body": content.replace('\n', '<br>')
+                })
+            
+            return results
+            
+        except Exception as e:
+            print(f"コメント取得エラー: {str(e)}")
+            return []
+    
+    return await run_in_threadpool(sync_fetch)
 
 def fetch_video_data_from_edu_api(videoid: str):
     target_url = f"{EDU_VIDEO_API_BASE_URL}{urllib.parse.quote(videoid)}"
@@ -189,127 +393,6 @@ def fetch_video_data_from_edu_api(videoid: str):
     )
     res.raise_for_status()
     return res.json()
-
-def format_related_video(related_data: dict) -> dict:
-    is_playlist = related_data.get("playlistId") and related_data.get("playlistId") != related_data.get("videoId")
-    
-    thumbnail_vid_id = related_data.get('videoId') or related_data.get('playlistId')
-    thumbnail_url = f"https://i.ytimg.com/vi/{thumbnail_vid_id}/sddefault.jpg" if thumbnail_vid_id else failed
-    
-    if is_playlist:
-        return {
-            "type": "playlist",
-            "title": related_data.get("title", failed), 
-            "id": related_data.get('playlistId', failed),
-            "author": related_data.get("channel", failed),
-            "thumbnail_url": thumbnail_url
-        }
-    
-    return {
-        "type": "video", 
-        "id": related_data.get("videoId", failed), 
-        "video_id": related_data.get("videoId", failed), 
-        "title": related_data.get("title", failed), 
-        "author_id": related_data.get("channelId", failed),
-        "author": related_data.get("channel", failed), 
-        "length_text": related_data.get("badge", failed), 
-        "view_count_text": related_data.get("views", failed),
-        "published_text": related_data.get("uploaded", failed), 
-        "thumbnail_url": thumbnail_url
-    }
-
-async def getVideoData(videoid):
-    try:
-        t = await run_in_threadpool(fetch_video_data_from_edu_api, videoid)
-    except requests.exceptions.RequestException as e:
-        raise APITimeoutError(f"New video API failed: {e}") from e
-    except json.JSONDecodeError as e:
-        raise APITimeoutError(f"New video API returned invalid JSON: {e}") from e
-
-    author_icon_url = t.get("author", {}).get("thumbnail", failed)
-
-    video_details = {
-        'video_urls': [], 
-        'description_html': t.get("description", {}).get("formatted", failed), 
-        'title': t.get("title", failed),
-        'author_id': t.get("author", {}).get("id", failed), 
-        'author': t.get("author", {}).get("name", failed), 
-        'author_thumbnails_url': author_icon_url, 
-        'view_count': t.get("views", failed), 
-        'like_count': t.get("likes", failed), 
-        'subscribers_count': t.get("author", {}).get("subscribers", failed),
-        'published_text': t.get("relativeDate", failed),
-        "length_text": "" 
-    }
-    
-    recommended_videos = [format_related_video(i) for i in t.get('related', [])]
-
-    return [video_details, recommended_videos]
-    
-async def getSearchData(q, page):
-    datas_text = await run_in_threadpool(requestAPI, f"/search?q={urllib.parse.quote(q)}&page={page}&hl=jp", invidious_api.search)
-    datas_dict = json.loads(datas_text)
-    return [formatSearchData(data_dict) for data_dict in datas_dict]
-
-async def getTrendingData(region: str):
-    path = f"/trending?region={region}&hl=jp"
-    datas_text = await run_in_threadpool(requestAPI, path, invidious_api.search)
-    datas_dict = json.loads(datas_text)
-    return [formatSearchData(data_dict) for data_dict in datas_dict if data_dict.get("type") == "video"]
-
-async def getChannelData(channelid):
-    t = {}
-    try:
-        t_text = await run_in_threadpool(requestAPI, f"/channels/{urllib.parse.quote(channelid)}", invidious_api.channel)
-        t = json.loads(t_text)
-
-        latest_videos_check = t.get('latestVideos') or t.get('latestvideo')
-        if not latest_videos_check:
-            t = {}
-
-    except (APITimeoutError, json.JSONDecodeError, Exception):
-        pass
-        
-    latest_videos = t.get('latestVideos') or t.get('latestvideo') or []
-    
-    author_thumbnails = t.get("authorThumbnails", [])
-    author_icon_url = author_thumbnails[-1].get("url", failed) if author_thumbnails else failed
-
-    author_banner_url = ''
-    author_banners = t.get('authorBanners', [])
-    if author_banners and author_banners[0].get("url"):
-        author_banner_url = urllib.parse.quote(author_banners[0]["url"], safe="-_.~/:")
-    
-    return [[
-        {
-            "type": "video", 
-            "title": i.get("title", failed), 
-            "id": i.get("videoId", failed), 
-            "author": t.get("author", failed), 
-            "published": i.get("publishedText", failed), 
-            "view_count_text": i.get('viewCountText', failed), 
-            "length_str": str(datetime.timedelta(seconds=i.get("lengthSeconds", 0)))
-        }
-        for i in latest_videos
-    ], {
-        "channel_name": t.get("author", "チャンネル情報取得失敗"), 
-        "channel_icon": author_icon_url, 
-        "channel_profile": t.get("descriptionHtml", "このチャンネルのプロフィール情報は見つかりませんでした。"),
-        "author_banner": author_banner_url,
-        "subscribers_count": t.get("subCount", failed), 
-        "tags": t.get("tags", [])
-    }]
-
-async def getPlaylistData(listid, page):
-    t_text = await run_in_threadpool(requestAPI, f"/playlists/{urllib.parse.quote(listid)}?page={urllib.parse.quote(str(page))}", invidious_api.playlist)
-    t = json.loads(t_text)["videos"]
-    return [{"title": i["title"], "id": i["videoId"], "authorId": i["authorId"], "author": i["author"], "type": "video"} for i in t]
-
-async def getCommentsData(videoid):
-    t_text = await run_in_threadpool(requestAPI, f"/comments/{urllib.parse.quote(videoid)}", invidious_api.comments)
-    t = json.loads(t_text)["comments"]
-    return [{"author": i["author"], "authoricon": i["authorThumbnails"][-1]["url"], "authorid": i["authorId"], "body": i["contentHtml"].replace("\n", "<br>")} for i in t]
-
 
 def get_ytdl_formats(videoid: str) -> List[Dict[str, Any]]:
     target_url = f"{STREAM_YTDL_API_BASE_URL}{videoid}"
@@ -465,14 +548,12 @@ async def post_new_message(client_ip: str, name: str, body: str):
     return await run_in_threadpool(sync_post)
 
 app = FastAPI()
-invidious_api = InvidiousAPI() 
 
 app.mount(
     "/static", 
     StaticFiles(directory=str(BASE_DIR / "static")), 
     name="static"
 )
-
 
 @app.get("/api/edu")
 async def get_edu_key_route():
@@ -568,7 +649,6 @@ async def get_bbs_posts_route():
     except Exception as e:
         return Response(content=f'{{"detail": "An unexpected error occurred: {str(e)}"}}', media_type="application/json", status_code=500)
 
-
 @app.post("/api/bbs/post")
 async def post_new_message_route(request: Request):
     try:
@@ -591,7 +671,6 @@ async def post_new_message_route(request: Request):
         return Response(content=f'{{"detail": "BBS API connection error or timeout: {str(e)}"}}', media_type="application/json", status_code=503)
     except Exception as e:
         return Response(content=f'{{"detail": "An unexpected error occurred: {str(e)}"}}', media_type="application/json", status_code=500)
-
 
 @app.get('/', response_class=HTMLResponse)
 async def home(request: Request, yuzu_access_granted: Union[str, None] = Cookie(None), proxy: Union[str, None] = Cookie(None)):
@@ -716,7 +795,7 @@ async def channel(channelid: str, request: Request, proxy: Union[str, None] = Co
 
 @app.get("/playlist", response_class=HTMLResponse)
 async def playlist(list: str, request: Request, page: Union[int, None] = 1, proxy: Union[str, None] = Cookie(None)):
-    playlist_data = await getPlaylistData(list, str(page))
+    playlist_data = await getPlaylistData(list, page)
     return templates.TemplateResponse("search.html", {
         "request": request, 
         "results": playlist_data, 
@@ -747,6 +826,18 @@ async def thumbnail(v: str):
         return Response(status_code=404) 
 
 @app.get("/suggest")
-def suggest(keyword: str):
-    res_text = requests.get("http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q=" + urllib.parse.quote(keyword), headers=getRandomUserAgent()).text
-    return [i[0] for i in json.loads(res_text[19:-1])[1]]
+async def suggest(keyword: str):
+    """検索サジェストを取得"""
+    def sync_suggestions():
+        try:
+            suggestions_obj = Suggestions(language='ja', region='JP')
+            suggestions = suggestions_obj.get(keyword)
+            
+            if suggestions and 'result' in suggestions:
+                return [item for item in suggestions['result']]
+            return []
+        except:
+            return []
+    
+    result = await run_in_threadpool(sync_suggestions)
+    return result
