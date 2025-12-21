@@ -33,7 +33,10 @@ max_api_wait_time = (3.0, 8.0)
 failed = "取得失敗"
 
 PROXY_URL = "http://ytproxy-siawaseok.duckdns.org:3007"
-PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
+PROXIES = {
+    "http": PROXY_URL,
+    "https": PROXY_URL,
+}
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
 EDU_VIDEO_API_BASE_URL = "https://api-five-zeta-55.vercel.app/api/video/"
@@ -84,21 +87,22 @@ class InvidiousAPI:
         self.search = list(self.all['search'])
         self.channel = list(self.all['channel'])
         self.comments = list(self.all['comments'])
-        self.check_video = False
 
 invidious_api = InvidiousAPI()
 
 def requestAPI(path, api_urls):
     apis_to_try = api_urls
     if not apis_to_try:
-        raise APITimeoutError("API URL設定なし")
+        raise APITimeoutError("API設定なし")
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(apis_to_try)) as executor:
         future_to_api = {
             executor.submit(
                 requests.get, 
                 api + 'api/v1' + path, 
                 headers=getRandomUserAgent(), 
-                timeout=max_api_wait_time
+                timeout=max_api_wait_time,
+                proxies=PROXIES,
+                verify=False
             ): api for api in apis_to_try
         }
         for future in concurrent.futures.as_completed(future_to_api, timeout=max_time):
@@ -111,14 +115,11 @@ def requestAPI(path, api_urls):
     raise APITimeoutError("API応答なし")
 
 def getEduKey():
-    api_url = "https://apis.kahoot.it/media-api/youtube/key"
     try:
-        res = requests.get(api_url, headers=getRandomUserAgent(), timeout=max_api_wait_time)
-        if isJSON(res.text):
-            return json.loads(res.text).get("key")
+        res = requests.get("https://apis.kahoot.it/media-api/youtube/key", headers=getRandomUserAgent(), timeout=max_api_wait_time, proxies=PROXIES, verify=False)
+        return json.loads(res.text).get("key")
     except:
-        pass
-    return None
+        return None
 
 def formatSearchData(data_dict):
     t = data_dict.get("type")
@@ -143,14 +144,7 @@ def formatSearchData(data_dict):
     elif t == "channel":
         thumbs = data_dict.get('authorThumbnails', [])
         thumbnail = thumbs[-1].get('url', failed) if thumbs else failed
-        if thumbnail != failed and not thumbnail.startswith("https"):
-            thumbnail = "https://" + thumbnail.lstrip("http://").lstrip("//")
-        return {
-            "type": "channel", 
-            "author": data_dict.get("author", failed), 
-            "id": data_dict.get("authorId", failed), 
-            "thumbnail": thumbnail
-        }
+        return {"type": "channel", "author": data_dict.get("author", failed), "id": data_dict.get("authorId", failed), "thumbnail": thumbnail}
     return {"type": "unknown"}
 
 def fetch_video_data_from_edu_api(videoid: str):
@@ -159,7 +153,8 @@ def fetch_video_data_from_edu_api(videoid: str):
         target_url, 
         headers=getRandomUserAgent(), 
         timeout=max_api_wait_time,
-        proxies=PROXIES
+        proxies=PROXIES,
+        verify=False
     )
     res.raise_for_status()
     return res.json()
@@ -167,7 +162,6 @@ def fetch_video_data_from_edu_api(videoid: str):
 def format_related_video(related_data: dict) -> dict:
     vid = related_data.get("videoId") or related_data.get("id", failed)
     is_p = "playlistId" in related_data and related_data["playlistId"] != vid
-    thumb = f"https://i.ytimg.com/vi/{vid}/sddefault.jpg" if vid != failed else failed
     return {
         "type": "playlist" if is_p else "video",
         "id": related_data.get('playlistId') if is_p else vid,
@@ -178,17 +172,17 @@ def format_related_video(related_data: dict) -> dict:
         "length_text": related_data.get("lengthText", ""),
         "view_count_text": related_data.get("viewCountText", ""),
         "published_text": related_data.get("publishedText", ""),
-        "thumbnail_url": thumb
+        "thumbnail_url": f"https://i.ytimg.com/vi/{vid}/sddefault.jpg"
     }
 
 async def getVideoData(videoid):
     try:
         t = await run_in_threadpool(fetch_video_data_from_edu_api, videoid)
     except Exception as e:
-        raise APITimeoutError(f"APIエラー: {e}")
+        raise APITimeoutError(f"API Error: {e}")
 
     if t.get("playability_status", {}).get("status") == "LOGIN_REQUIRED":
-        raise APITimeoutError("Bot検知されました。しばらく時間をおいてください。")
+        raise APITimeoutError("Bot検知によりアクセスが制限されています")
 
     basic = t.get("basic_info") or {}
     author = t.get("author") or {}
@@ -206,7 +200,6 @@ async def getVideoData(videoid):
         'published_text': t.get("publishedText") or t.get("relativeDate") or "",
         "length_text": t.get("lengthText") or "" 
     }
-    
     related = [format_related_video(i) for i in t.get('related', []) if isinstance(i, dict)]
     return [video_details, related]
 
@@ -224,28 +217,11 @@ async def getChannelData(channelid):
         t = json.loads(text)
     except:
         t = {}
-    
     videos = t.get('latestVideos') or t.get('latestvideo') or []
-    thumbs = t.get("authorThumbnails", [])
-    icon = thumbs[-1].get("url", failed) if thumbs else failed
-    
-    banner = ''
-    banners = t.get('authorBanners', [])
-    if banners and banners[0].get("url"):
-        banner = urllib.parse.quote(banners[0]["url"], safe="-_.~/:")
-
-    results = [{
-        "type": "video", "title": i.get("title", failed), "id": i.get("videoId", failed), 
-        "author": t.get("author", failed), "published": i.get("publishedText", failed), 
-        "view_count_text": i.get('viewCountText', failed), 
-        "length_str": str(datetime.timedelta(seconds=i.get("lengthSeconds", 0)))
-    } for i in videos]
-
-    info = {
-        "channel_name": t.get("author", "不明"), "channel_icon": icon, 
-        "channel_profile": t.get("descriptionHtml", ""), "author_banner": banner,
-        "subscribers_count": t.get("subCount", "0"), "tags": t.get("tags", [])
-    }
+    icon = t.get("authorThumbnails", [{}])[-1].get("url", failed)
+    banner = urllib.parse.quote(t.get('authorBanners', [{}])[0].get("url", ""), safe="-_.~/:") if t.get('authorBanners') else ""
+    results = [{"type": "video", "title": i.get("title", failed), "id": i.get("videoId", failed), "author": t.get("author", failed), "published": i.get("publishedText", failed), "view_count_text": i.get('viewCountText', failed), "length_str": str(datetime.timedelta(seconds=i.get("lengthSeconds", 0)))} for i in videos]
+    info = {"channel_name": t.get("author", "不明"), "channel_icon": icon, "channel_profile": t.get("descriptionHtml", ""), "author_banner": banner, "subscribers_count": t.get("subCount", "0"), "tags": t.get("tags", [])}
     return [results, info]
 
 async def getPlaylistData(listid, page):
@@ -271,19 +247,19 @@ async def get_edu_key_route():
 async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[str, None] = Cookie(None)):
     try:
         def fetch():
-            res = requests.get(f"https://yudlp-ygug.onrender.com/m3u8/{videoid}", timeout=15).json()
+            res = requests.get(f"https://yudlp-ygug.onrender.com/m3u8/{videoid}", timeout=15, proxies=PROXIES, verify=False).json()
             m3u8 = sorted(res.get('m3u8_formats', []), key=lambda x: int(x.get('resolution','0x0').split('x')[-1]) if 'x' in x.get('resolution','') else 0, reverse=True)
             return {"url": m3u8[0]['url'], "title": res.get('title')}
         d = await run_in_threadpool(fetch)
         return templates.TemplateResponse('embed_high.html', {"request": request, "video_url": d["url"], "audio_url": "", "video_title": d["title"], "videoid": videoid, "proxy": proxy})
-    except Exception as e:
-        return Response(str(e), status_code=500)
+    except:
+        return Response("Stream Error", status_code=500)
 
 @app.get("/api/stream_360p_url/{videoid}")
 async def get_360p_stream_url_route(videoid: str):
     try:
         def fetch():
-            res = requests.get(f"{STREAM_YTDL_API_BASE_URL}{videoid}", timeout=max_api_wait_time).json()
+            res = requests.get(f"{STREAM_YTDL_API_BASE_URL}{videoid}", timeout=max_api_wait_time, proxies=PROXIES, verify=False).json()
             return next(f["url"] for f in res.get("formats", []) if f.get("itag") == "18")
         return {"stream_url": await run_in_threadpool(fetch)}
     except:
@@ -292,7 +268,7 @@ async def get_360p_stream_url_route(videoid: str):
 @app.get('/api/edu/{videoid}', response_class=HTMLResponse)
 async def embed_edu_video(request: Request, videoid: str, proxy: Union[str, None] = Cookie(None)):
     try:
-        res = requests.get(f"{EDU_STREAM_API_BASE_URL}{videoid}", timeout=max_api_wait_time).json()
+        res = requests.get(f"{EDU_STREAM_API_BASE_URL}{videoid}", timeout=max_api_wait_time, proxies=PROXIES, verify=False).json()
         return templates.TemplateResponse('embed.html', {"request": request, "embed_url": res.get("url"), "videoid": videoid, "proxy": proxy})
     except:
         return Response(status_code=503)
@@ -300,14 +276,14 @@ async def embed_edu_video(request: Request, videoid: str, proxy: Union[str, None
 @app.get("/api/short/{channelid}")
 async def get_short_data_route(channelid: str):
     try:
-        return requests.get(f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}", timeout=max_api_wait_time).json()
+        return requests.get(f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}", timeout=max_api_wait_time, proxies=PROXIES, verify=False).json()
     except:
         return Response(status_code=503)
 
 @app.get("/api/bbs/posts")
 async def get_bbs_posts_route():
     try:
-        return requests.get(f"{BBS_EXTERNAL_API_BASE_URL}/posts", timeout=max_api_wait_time).json()
+        return requests.get(f"{BBS_EXTERNAL_API_BASE_URL}/posts", timeout=max_api_wait_time, proxies=PROXIES, verify=False).json()
     except:
         return Response(status_code=503)
 
@@ -316,7 +292,7 @@ async def post_new_message_route(request: Request):
     try:
         ip = request.headers.get("x-forwarded-for", "unknown").split(',')[0].strip()
         data = await request.json()
-        return requests.post(f"{BBS_EXTERNAL_API_BASE_URL}/post", json=data, headers={"X-Original-Client-IP": ip}, timeout=max_api_wait_time).json()
+        return requests.post(f"{BBS_EXTERNAL_API_BASE_URL}/post", json=data, headers={"X-Original-Client-IP": ip}, timeout=max_api_wait_time, proxies=PROXIES, verify=False).json()
     except:
         return Response(status_code=500)
 
@@ -344,14 +320,7 @@ async def access_gate_post(request: Request, access_code: str = Form(...)):
 async def video(v: str, request: Request, proxy: Union[str, None] = Cookie(None)):
     try:
         data = await getVideoData(v)
-        return templates.TemplateResponse('video.html', {
-            "request": request, "videoid": v, "videourls": [], 
-            "description": data[0]['description_html'], "video_title": data[0]['title'], 
-            "author_id": data[0]['author_id'], "author_icon": data[0]['author_thumbnails_url'], 
-            "author": data[0]['author'], "length_text": data[0]['length_text'], 
-            "view_count": data[0]['view_count'], "like_count": data[0]['like_count'], 
-            "subscribers_count": data[0]['subscribers_count'], "recommended_videos": data[1], "proxy": proxy
-        })
+        return templates.TemplateResponse('video.html', {"request": request, "videoid": v, "videourls": [], "description": data[0]['description_html'], "video_title": data[0]['title'], "author_id": data[0]['author_id'], "author_icon": data[0]['author_thumbnails_url'], "author": data[0]['author'], "length_text": data[0]['length_text'], "view_count": data[0]['view_count'], "like_count": data[0]['like_count'], "subscribers_count": data[0]['subscribers_count'], "recommended_videos": data[1], "proxy": proxy})
     except Exception as e:
         return Response(f"エラー: {str(e)}", status_code=500)
 
@@ -366,17 +335,12 @@ async def search(q: str, request: Request, page: int = 1, proxy: Union[str, None
 @app.get("/channel/{channelid}", response_class=HTMLResponse)
 async def channel(channelid: str, request: Request, proxy: Union[str, None] = Cookie(None)):
     data = await getChannelData(channelid)
-    return templates.TemplateResponse("channel.html", {
-        "request": request, "results": data[0], "shorts": [],  
-        "channel_name": data[1]["channel_name"], "channel_icon": data[1]["channel_icon"], 
-        "channel_profile": data[1]["channel_profile"], "cover_img_url": data[1]["author_banner"], 
-        "subscribers_count": data[1]["subscribers_count"], "tags": data[1]["tags"], "proxy": proxy
-    })
+    return templates.TemplateResponse("channel.html", {"request": request, "results": data[0], "shorts": [], "channel_name": data[1]["channel_name"], "channel_icon": data[1]["channel_icon"], "channel_profile": data[1]["channel_profile"], "cover_img_url": data[1]["author_banner"], "subscribers_count": data[1]["subscribers_count"], "tags": data[1]["tags"], "proxy": proxy})
 
 @app.get("/thumbnail")
 async def thumbnail(v: str):
     try:
-        res = requests.get(f"https://img.youtube.com/vi/{v}/0.jpg", timeout=3.0)
+        res = requests.get(f"https://img.youtube.com/vi/{v}/0.jpg", timeout=3.0, proxies=PROXIES, verify=False)
         return Response(content=res.content, media_type="image/jpeg")
     except:
         return Response(status_code=404) 
@@ -384,7 +348,7 @@ async def thumbnail(v: str):
 @app.get("/suggest")
 def suggest(keyword: str):
     try:
-        res = requests.get(f"http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q={urllib.parse.quote(keyword)}").text
+        res = requests.get(f"http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q={urllib.parse.quote(keyword)}", proxies=PROXIES, verify=False).text
         return [i[0] for i in json.loads(res[19:-1])[1]]
     except:
         return []
