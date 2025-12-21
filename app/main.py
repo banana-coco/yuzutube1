@@ -43,12 +43,6 @@ BBS_EXTERNAL_API_BASE_URL = "https://server-bbs.vercel.app"
 invidious_api_data = {
     'video': [
         'https://invidious.lunivers.trade/',
-        'https://invidious.ducks.party/',
-        'https://super8.absturztau.be/',
-        'https://invidious.nikkosphere.com/',
-        'https://yt.omada.cafe/',
-        'https://iv.melmac.space/',
-        'https://iv.duti.dev/',
              ], 
     'playlist': [
         'https://invidious.lunivers.trade/',
