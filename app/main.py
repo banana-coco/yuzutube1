@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool 
-
+from youtubesearchpython.__future__ import Video
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates")) 
@@ -32,15 +32,11 @@ def isJSON(json_str):
 max_time = 10.0
 max_api_wait_time = (3.0, 8.0)
 failed = "Load Failed"
-MAX_RETRIES = 10   
-RETRY_DELAY = 5.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
-EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/"
 STREAM_YTDL_API_BASE_URL = "https://yudlp-ygug.onrender.com/stream/" 
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 BBS_EXTERNAL_API_BASE_URL = "https://server-bbs.vercel.app"
-
 
 invidious_api_data = {
     'video': [], 
@@ -85,14 +81,11 @@ class InvidiousAPI:
         self.search = list(self.all['search'])
         self.channel = list(self.all['channel'])
         self.comments = list(self.all['comments'])
-        self.check_video = False
 
 def requestAPI(path, api_urls):
     apis_to_try = api_urls
-    
     if not apis_to_try:
-        raise APITimeoutError("No API instances configured for this type of request.")
-        
+        raise APITimeoutError("No API instances configured.")
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(apis_to_try)) as executor:
         future_to_api = {
             executor.submit(
@@ -102,40 +95,26 @@ def requestAPI(path, api_urls):
                 timeout=max_api_wait_time
             ): api for api in apis_to_try
         }
-        
         for future in concurrent.futures.as_completed(future_to_api, timeout=max_time):
             try:
                 res = future.result()
-                
                 if res.status_code == requests.codes.ok and isJSON(res.text):
                     return res.text
-                
-            except requests.exceptions.RequestException:
+            except:
                 continue
-            except concurrent.futures.TimeoutError:
-                break
-            
-    raise APITimeoutError("All available API instances failed to respond or timed out.")
+    raise APITimeoutError("All API instances failed.")
 
 def getEduKey():
     api_url = "https://apis.kahoot.it/media-api/youtube/key"
     try:
         res = requests.get(api_url, headers=getRandomUserAgent(), timeout=max_api_wait_time)
-        res.raise_for_status() 
-        
         if isJSON(res.text):
-            data = json.loads(res.text)
-            return data.get("key")
-        
-    except requests.exceptions.RequestException:
+            return json.loads(res.text).get("key")
+    except:
         pass
-    except json.JSONDecodeError:
-        pass
-    
     return None
 
-
-def formatSearchData(data_dict, failed="Load Failed"):
+def formatSearchData(data_dict):
     if data_dict["type"] == "video": 
         return {
             "type": "video", 
@@ -156,119 +135,85 @@ def formatSearchData(data_dict, failed="Load Failed"):
         }
     elif data_dict["type"] == "channel":
         thumbnail_url = data_dict.get('authorThumbnails', [{}])[-1].get('url', failed) if data_dict.get('authorThumbnails') else failed
-        if thumbnail_url != failed and not thumbnail_url.startswith("https"):
-            thumbnail = "https://" + thumbnail_url.lstrip("http://").lstrip("//")
-        else:
-            thumbnail = thumbnail_url
         return {
             "type": "channel", 
             "author": data_dict.get("author", failed), 
             "id": data_dict.get("authorId", failed), 
-            "thumbnail": thumbnail
+            "thumbnail": thumbnail_url
         }
     return {"type": "unknown", "data": data_dict}
 
-def fetch_video_data_from_edu_api(videoid: str):
-    target_url = f"{EDU_VIDEO_API_BASE_URL}{urllib.parse.quote(videoid)}"
-    
-    res = requests.get(
-        target_url, 
-        headers=getRandomUserAgent(), 
-        timeout=max_api_wait_time
-    )
-    res.raise_for_status()
-    return res.json()
-
-def format_related_video(related_data: dict) -> dict:
-    is_playlist = related_data.get("playlistId") and related_data.get("playlistId") != related_data.get("videoId")
-    
-    thumbnail_vid_id = related_data.get('videoId') or related_data.get('playlistId')
-    thumbnail_url = f"https://i.ytimg.com/vi/{thumbnail_vid_id}/sddefault.jpg" if thumbnail_vid_id else failed
-    
-    if is_playlist:
-        return {
-            "type": "playlist",
-            "title": related_data.get("title", failed), 
-            "id": related_data.get('playlistId', failed),
-            "author": related_data.get("channel", failed),
-            "thumbnail_url": thumbnail_url
-        }
-    
-    return {
-        "type": "video", 
-        "id": related_data.get("videoId", failed), 
-        "video_id": related_data.get("videoId", failed), 
-        "title": related_data.get("title", failed), 
-        "author_id": related_data.get("channelId", failed),
-        "author": related_data.get("channel", failed), 
-        "length_text": related_data.get("badge", failed), 
-        "view_count_text": related_data.get("views", failed),
-        "published_text": related_data.get("uploaded", failed), 
-        "thumbnail_url": thumbnail_url
-    }
-
 async def getVideoData(videoid):
     try:
-        t = await run_in_threadpool(fetch_video_data_from_edu_api, videoid)
-    except requests.exceptions.RequestException as e:
-        raise APITimeoutError(f"New video API failed: {e}") from e
-    except json.JSONDecodeError as e:
-        raise APITimeoutError(f"New video API returned invalid JSON: {e}") from e
+        video_info = await Video.get(videoid)
+        if not video_info:
+            raise APITimeoutError("Video data not found")
 
-    author_icon_url = t.get("author", {}).get("thumbnail", failed)
+        author_thumbs = video_info.get("channel", {}).get("thumbnails", [])
+        author_icon = author_thumbs[-1].get("url", failed) if author_thumbs else failed
 
-    video_details = {
-        'video_urls': [], 
-        'description_html': t.get("description", {}).get("formatted", failed), 
-        'title': t.get("title", failed),
-        'author_id': t.get("author", {}).get("id", failed), 
-        'author': t.get("author", {}).get("name", failed), 
-        'author_thumbnails_url': author_icon_url, 
-        'view_count': t.get("views", failed), 
-        'like_count': t.get("likes", failed), 
-        'subscribers_count': t.get("author", {}).get("subscribers", failed),
-        'published_text': t.get("relativeDate", failed),
-        "length_text": "" 
-    }
-    
-    recommended_videos = [format_related_video(i) for i in t.get('related', [])]
+        video_details = {
+            'video_urls': [], 
+            'description_html': video_info.get("description", failed).replace("\n", "<br>"), 
+            'title': video_info.get("title", failed),
+            'author_id': video_info.get("channel", {}).get("id", failed), 
+            'author': video_info.get("channel", {}).get("name", failed), 
+            'author_thumbnails_url': author_icon, 
+            'view_count': video_info.get("viewCount", {}).get("text", failed), 
+            'like_count': "N/A", 
+            'subscribers_count': video_info.get("channel", {}).get("subscribers", failed),
+            'published_text': video_info.get("publishDate", failed),
+            "length_text": video_info.get("duration", {}).get("text", "") 
+        }
+        
+        recommended_videos = []
+        for item in video_info.get("suggestions", []):
+            thumb_id = item.get("id")
+            if "playlistId" in item:
+                recommended_videos.append({
+                    "type": "playlist",
+                    "title": item.get("title", failed), 
+                    "id": item.get("id", failed),
+                    "author": item.get("channel", {}).get("name", failed),
+                    "thumbnail_url": f"https://i.ytimg.com/vi/{thumb_id}/sddefault.jpg"
+                })
+            else:
+                recommended_videos.append({
+                    "type": "video", 
+                    "id": item.get("id", failed), 
+                    "video_id": item.get("id", failed), 
+                    "title": item.get("title", failed), 
+                    "author_id": item.get("channel", {}).get("id", failed),
+                    "author": item.get("channel", {}).get("name", failed), 
+                    "length_text": item.get("duration", {}).get("text", failed), 
+                    "view_count_text": item.get("viewCount", {}).get("text", failed),
+                    "published_text": item.get("publishedTime", failed), 
+                    "thumbnail_url": f"https://i.ytimg.com/vi/{thumb_id}/sddefault.jpg"
+                })
+        return [video_details, recommended_videos]
+    except Exception as e:
+        raise APITimeoutError(f"Library error: {str(e)}")
 
-    return [video_details, recommended_videos]
-    
 async def getSearchData(q, page):
     datas_text = await run_in_threadpool(requestAPI, f"/search?q={urllib.parse.quote(q)}&page={page}&hl=jp", invidious_api.search)
-    datas_dict = json.loads(datas_text)
-    return [formatSearchData(data_dict) for data_dict in datas_dict]
+    return [formatSearchData(d) for d in json.loads(datas_text)]
 
 async def getTrendingData(region: str):
     path = f"/trending?region={region}&hl=jp"
     datas_text = await run_in_threadpool(requestAPI, path, invidious_api.search)
-    datas_dict = json.loads(datas_text)
-    return [formatSearchData(data_dict) for data_dict in datas_dict if data_dict.get("type") == "video"]
+    return [formatSearchData(d) for d in json.loads(datas_text) if d.get("type") == "video"]
 
 async def getChannelData(channelid):
     t = {}
     try:
         t_text = await run_in_threadpool(requestAPI, f"/channels/{urllib.parse.quote(channelid)}", invidious_api.channel)
         t = json.loads(t_text)
-
-        latest_videos_check = t.get('latestVideos') or t.get('latestvideo')
-        if not latest_videos_check:
-            t = {}
-
-    except (APITimeoutError, json.JSONDecodeError, Exception):
+    except:
         pass
-        
     latest_videos = t.get('latestVideos') or t.get('latestvideo') or []
-    
     author_thumbnails = t.get("authorThumbnails", [])
     author_icon_url = author_thumbnails[-1].get("url", failed) if author_thumbnails else failed
-
-    author_banner_url = ''
-    author_banners = t.get('authorBanners', [])
-    if author_banners and author_banners[0].get("url"):
-        author_banner_url = urllib.parse.quote(author_banners[0]["url"], safe="-_.~/:")
-    
+    author_banner_url = urllib.parse.quote(t.get('authorBanners', [{}])[0].get("url", ""), safe="-_.~/:") if t.get('authorBanners') else ""
     return [[
         {
             "type": "video", 
@@ -281,9 +226,9 @@ async def getChannelData(channelid):
         }
         for i in latest_videos
     ], {
-        "channel_name": t.get("author", "チャンネル情報取得失敗"), 
+        "channel_name": t.get("author", "取得失敗"), 
         "channel_icon": author_icon_url, 
-        "channel_profile": t.get("descriptionHtml", "このチャンネルのプロフィール情報は見つかりませんでした。"),
+        "channel_profile": t.get("descriptionHtml", ""),
         "author_banner": author_banner_url,
         "subscribers_count": t.get("subCount", failed), 
         "tags": t.get("tags", [])
@@ -299,374 +244,152 @@ async def getCommentsData(videoid):
     t = json.loads(t_text)["comments"]
     return [{"author": i["author"], "authoricon": i["authorThumbnails"][-1]["url"], "authorid": i["authorId"], "body": i["contentHtml"].replace("\n", "<br>")} for i in t]
 
-
-def get_ytdl_formats(videoid: str) -> List[Dict[str, Any]]:
-    target_url = f"{STREAM_YTDL_API_BASE_URL}{videoid}"
-    
-    res = requests.get(
-        target_url, 
-        headers=getRandomUserAgent(), 
-        timeout=max_api_wait_time
-    )
+def get_ytdl_formats(videoid: str):
+    res = requests.get(f"{STREAM_YTDL_API_BASE_URL}{videoid}", headers=getRandomUserAgent(), timeout=max_api_wait_time)
     res.raise_for_status()
-    data = res.json()
-    
-    formats: List[Dict[str, Any]] = data.get("formats", [])
-    if not formats:
-        raise ValueError("Stream API response is missing video formats.")
-        
-    return formats
+    return res.json().get("formats", [])
 
-def get_360p_single_url(videoid: str) -> str:
-    try:
-        formats = get_ytdl_formats(videoid)
-        
-        target_format = next((
-            f for f in formats 
-            if f.get("itag") == "18" and f.get("url") 
-        ), None)
-        
-        if target_format and target_format.get("url"):
-            return target_format["url"]
-            
-        raise ValueError("Could not find a combined 360p stream (itag 18) in the API response.")
+def get_360p_single_url(videoid: str):
+    formats = get_ytdl_formats(videoid)
+    target = next((f for f in formats if f.get("itag") == "18" and f.get("url")), None)
+    if target: return target["url"]
+    raise ValueError("No 360p stream found")
 
-    except requests.exceptions.HTTPError as e:
-        raise APITimeoutError(f"Stream API returned HTTP error: {e.response.status_code}") from e
-    except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as e:
-        raise APITimeoutError(f"Error processing stream API response for 360p: {e}") from e
+def fetch_high_quality_streams(videoid: str):
+    response = requests.get(f"https://yudlp-ygug.onrender.com/m3u8/{videoid}", timeout=15) 
+    response.raise_for_status() 
+    data = response.json()
+    m3u8_formats = sorted([f for f in data.get('m3u8_formats', []) if f.get('url')], key=lambda x: int(x.get('resolution', '0x0').split('x')[-1]), reverse=True)
+    if m3u8_formats:
+        return {"video_url": m3u8_formats[0]["url"], "audio_url": "", "title": f"[{m3u8_formats[0].get('resolution')}] {data.get('title')}"}
+    raise ValueError("No M3U8 found")
 
-def fetch_high_quality_streams(videoid: str) -> Dict[str, str]:
-    API_URL = f"https://yudlp-ygug.onrender.com/m3u8/{videoid}"
-
-    try:
-        response = requests.get(API_URL, timeout=15) 
-        response.raise_for_status() 
-        data = response.json()
-        
-        m3u8_formats = data.get('m3u8_formats', [])
-        
-        if not m3u8_formats:
-            raise ValueError("No M3U8 formats found in the API response.")
-
-        def get_height(f):
-            resolution_str = f.get('resolution', '0x0')
-            try:
-                return int(resolution_str.split('x')[-1]) if 'x' in resolution_str else 0
-            except ValueError:
-                return 0
-
-        m3u8_formats_sorted = sorted(
-            [f for f in m3u8_formats if f.get('url')],
-            key=get_height,
-            reverse=True
-        )
-        
-        if m3u8_formats_sorted:
-            best_m3u8 = m3u8_formats_sorted[0]
-            
-            title = data.get("title", f"Stream for {videoid}")
-            resolution = best_m3u8.get('resolution', 'Highest Quality')
-            
-            return {
-                "video_url": best_m3u8["url"],
-                "audio_url": "",
-                "title": f"[{resolution}] Stream for {title}"
-            }
-
-        raise ValueError("Could not find any suitable high-quality stream (M3U8) in the API response after sorting.")
-
-    except requests.exceptions.HTTPError as e:
-        raise APITimeoutError(f"Stream API returned HTTP error: {e.response.status_code} for {API_URL}") from e
-    except requests.exceptions.Timeout as e:
-        raise APITimeoutError(f"Stream API request timed out for {API_URL}") from e
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        raise APITimeoutError(f"Error processing stream API response: {e}") from e
-    except ValueError as e:
-        raise e
-
-async def fetch_embed_url_from_external_api(videoid: str) -> str:
-    target_url = f"{EDU_STREAM_API_BASE_URL}{videoid}"
-    
+async def fetch_embed_url_from_external_api(videoid: str):
     def sync_fetch():
-        res = requests.get(
-            target_url, 
-            headers=getRandomUserAgent(), 
-            timeout=max_api_wait_time
-        )
+        res = requests.get(f"{EDU_STREAM_API_BASE_URL}{videoid}", headers=getRandomUserAgent(), timeout=max_api_wait_time)
         res.raise_for_status()
-        data = res.json()
-        
-        embed_url = data.get("url")
-        if not embed_url:
-            raise ValueError("External API response is missing the 'url' field.")
-            
-        return embed_url
-
+        return res.json().get("url")
     return await run_in_threadpool(sync_fetch)
 
-async def fetch_short_data_from_external_api(channelid: str) -> Dict[str, Any]:
-    target_url = f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}"
-    
+async def fetch_short_data_from_external_api(channelid: str):
     def sync_fetch():
-        res = requests.get(
-            target_url, 
-            headers=getRandomUserAgent(), 
-            timeout=max_api_wait_time 
-        )
+        res = requests.get(f"{SHORT_STREAM_API_BASE_URL}{urllib.parse.quote(channelid)}", headers=getRandomUserAgent(), timeout=max_api_wait_time)
         res.raise_for_status()
         return res.json()
-
     return await run_in_threadpool(sync_fetch)
 
 async def fetch_bbs_posts():
-    target_url = f"{BBS_EXTERNAL_API_BASE_URL}/posts"
-    
     def sync_fetch():
-        res = requests.get(
-            target_url, 
-            headers=getRandomUserAgent(), 
-            timeout=max_api_wait_time
-        )
+        res = requests.get(f"{BBS_EXTERNAL_API_BASE_URL}/posts", headers=getRandomUserAgent(), timeout=max_api_wait_time)
         res.raise_for_status()
         return res.json()
-
     return await run_in_threadpool(sync_fetch)
 
 async def post_new_message(client_ip: str, name: str, body: str):
-    target_url = f"{BBS_EXTERNAL_API_BASE_URL}/post"
-    
     def sync_post():
-        headers = {
-            **getRandomUserAgent(), 
-            "X-Original-Client-IP": client_ip
-        }
-        
-        res = requests.post(
-            target_url, 
-            json={"name": name, "body": body},
-            headers=headers,
-            timeout=max_api_wait_time
-        )
+        res = requests.post(f"{BBS_EXTERNAL_API_BASE_URL}/post", json={"name": name, "body": body}, headers={**getRandomUserAgent(), "X-Original-Client-IP": client_ip}, timeout=max_api_wait_time)
         res.raise_for_status()
         return res.json()
-
     return await run_in_threadpool(sync_post)
 
 app = FastAPI()
 invidious_api = InvidiousAPI() 
 
-app.mount(
-    "/static", 
-    StaticFiles(directory=str(BASE_DIR / "static")), 
-    name="static"
-)
-
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 @app.get("/api/edu")
 async def get_edu_key_route():
     key = await run_in_threadpool(getEduKey)
-    
-    if key:
-        return {"key": key}
-    else:
-        return Response(content='{"error": "Failed to retrieve key from Kahoot API"}', media_type="application/json", status_code=500)
+    return {"key": key} if key else Response(content='{"error": "failed"}', media_type="application/json", status_code=500)
 
 @app.get('/api/stream_high/{videoid}', response_class=HTMLResponse)
 async def embed_high_quality_video(request: Request, videoid: str, proxy: Union[str, None] = Cookie(None)):
     try:
         stream_data = await run_in_threadpool(fetch_high_quality_streams, videoid)
-        
-    except APITimeoutError as e:
-        return Response(f"Failed to retrieve high-quality stream URL: {e}", status_code=503)
-        
+        return templates.TemplateResponse('embed_high.html', {"request": request, "video_url": stream_data["video_url"], "audio_url": stream_data["audio_url"], "video_title": stream_data["title"], "videoid": videoid, "proxy": proxy})
     except Exception as e:
-        return Response("An unexpected error occurred while retrieving stream data.", status_code=500)
-
-    return templates.TemplateResponse(
-        'embed_high.html', 
-        {
-            "request": request, 
-            "video_url": stream_data["video_url"],
-            "audio_url": stream_data["audio_url"],
-            "video_title": stream_data["title"],
-            "videoid": videoid,
-            "proxy": proxy
-        }
-    )
+        return Response(str(e), status_code=500)
 
 @app.get("/api/stream_360p_url/{videoid}")
 async def get_360p_stream_url_route(videoid: str):
     try:
         url = await run_in_threadpool(get_360p_single_url, videoid)
         return {"stream_url": url}
-    except APITimeoutError as e:
-        return Response(content=f'{{"error": "Failed to get stream URL after multiple attempts: {str(e)}"}}', media_type="application/json", status_code=503)
     except Exception as e:
-        return Response(content=f'{{"error": "An unexpected error occurred: {str(e)}"}}', media_type="application/json", status_code=500)
+        return Response(content=f'{{"error": "{str(e)}"}}', media_type="application/json", status_code=500)
 
 @app.get('/api/edu/{videoid}', response_class=HTMLResponse)
 async def embed_edu_video(request: Request, videoid: str, proxy: Union[str, None] = Cookie(None)):
-    embed_url = None
     try:
         embed_url = await fetch_embed_url_from_external_api(videoid)
-        
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code
-        if status_code == 404:
-            return Response(f"Stream URL for videoid '{videoid}' not found.", status_code=404)
-        
-        return Response("Failed to retrieve stream URL from external service (HTTP Error).", status_code=503)
-        
-    except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError):
-        return Response("Failed to retrieve stream URL from external service (Connection/Format Error).", status_code=503)
-
-    return templates.TemplateResponse(
-        'embed.html', 
-        {
-            "request": request, 
-            "embed_url": embed_url,
-            "videoid": videoid,
-            "proxy": proxy
-        }
-    )
+        return templates.TemplateResponse('embed.html', {"request": request, "embed_url": embed_url, "videoid": videoid, "proxy": proxy})
+    except Exception as e:
+        return Response(str(e), status_code=503)
 
 @app.get("/api/short/{channelid}")
 async def get_short_data_route(channelid: str):
     try:
-        data = await fetch_short_data_from_external_api(channelid)
-        return data
-        
+        return await fetch_short_data_from_external_api(channelid)
     except Exception as e:
-        return Response(
-            content=f'{{"error": "Failed to retrieve Shorts data from external service: {str(e)}"}}', 
-            media_type="application/json", 
-            status_code=503
-        )
+        return Response(content=f'{{"error": "{str(e)}"}}', media_type="application/json", status_code=503)
 
 @app.get("/api/bbs/posts")
 async def get_bbs_posts_route():
     try:
-        posts_data = await fetch_bbs_posts()
-        return posts_data
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code
-        return Response(content=e.response.text, media_type="application/json", status_code=status_code)
-    except requests.exceptions.RequestException as e:
-        return Response(content=f'{{"detail": "BBS API connection error or timeout: {str(e)}"}}', media_type="application/json", status_code=503)
+        return await fetch_bbs_posts()
     except Exception as e:
-        return Response(content=f'{{"detail": "An unexpected error occurred: {str(e)}"}}', media_type="application/json", status_code=500)
-
+        return Response(content=str(e), media_type="application/json", status_code=500)
 
 @app.post("/api/bbs/post")
 async def post_new_message_route(request: Request):
     try:
         client_ip = request.headers.get("x-forwarded-for", "unknown").split(',')[0].strip()
-        
         data = await request.json()
-        name = data.get("name", "")
-        body = data.get("body", "")
-        
-        if not body:
-            return Response(content='{"detail": "Body is required"}', media_type="application/json", status_code=400)
-
-        post_response = await post_new_message(client_ip, name, body)
-        return post_response
-        
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code
-        return Response(content=e.response.text, media_type="application/json", status_code=status_code)
-    except requests.exceptions.RequestException as e:
-        return Response(content=f'{{"detail": "BBS API connection error or timeout: {str(e)}"}}', media_type="application/json", status_code=503)
+        return await post_new_message(client_ip, data.get("name", ""), data.get("body", ""))
     except Exception as e:
-        return Response(content=f'{{"detail": "An unexpected error occurred: {str(e)}"}}', media_type="application/json", status_code=500)
-
+        return Response(content=str(e), media_type="application/json", status_code=500)
 
 @app.get('/', response_class=HTMLResponse)
 async def home(request: Request, yuzu_access_granted: Union[str, None] = Cookie(None), proxy: Union[str, None] = Cookie(None)):
-    if yuzu_access_granted != "True":
-        return RedirectResponse(url="/gate", status_code=302)
-    
-    trending_videos = []
-    try:
-        trending_videos = await getTrendingData("jp")
-    except Exception:
-        pass
-        
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "proxy": proxy,
-        "results": trending_videos,
-        "word": ""
-    })
+    if yuzu_access_granted != "True": return RedirectResponse(url="/gate", status_code=302)
+    trending = []
+    try: trending = await getTrendingData("jp")
+    except: pass
+    return templates.TemplateResponse("index.html", {"request": request, "proxy": proxy, "results": trending, "word": ""})
 
 @app.get('/gate', response_class=HTMLResponse)
 async def access_gate_get(request: Request):
-    return templates.TemplateResponse("access_gate.html", {
-        "request": request,
-        "message": "アクセスコードを入力してください。"
-    })
+    return templates.TemplateResponse("access_gate.html", {"request": request, "message": "コードを入力してください。"})
 
 @app.post('/gate')
 async def access_gate_post(request: Request, access_code: str = Form(...)):
-    CORRECT_CODE = "yuzu"
-    
-    if access_code == CORRECT_CODE:
+    if access_code == "yuzu":
         response = RedirectResponse(url="/", status_code=302)
-        
-        expires_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-        response.set_cookie(
-            key="yuzu_access_granted", 
-            value="True", 
-            expires=expires_time.strftime("%a, %d-%b-%Y %H:%M:%S GMT"), 
-            httponly=True
-        )
+        expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+        response.set_cookie(key="yuzu_access_granted", value="True", expires=expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT"), httponly=True)
         return response
-    else:
-        return templates.TemplateResponse("access_gate.html", {
-            "request": request,
-            "message": "無効なアクセスコードです。もう一度入力してください。",
-            "error": True
-        }, status_code=401)
-        
+    return templates.TemplateResponse("access_gate.html", {"request": request, "message": "無効なコードです。", "error": True}, status_code=401)
+
 @app.get('/bbs', response_class=HTMLResponse)
 async def bbs(request: Request):
     return templates.TemplateResponse("bbs.html", {"request": request})
 
 @app.get('/watch', response_class=HTMLResponse)
 async def video(v: str, request: Request, proxy: Union[str, None] = Cookie(None)):
-    video_data = await getVideoData(v)
-    
-    high_quality_url = ""
-    
+    data = await getVideoData(v)
     return templates.TemplateResponse('video.html', {
-        "request": request, 
-        "videoid": v, 
-        "videourls": video_data[0]['video_urls'], 
-        "high_quality_url": high_quality_url,
-        "description": video_data[0]['description_html'], 
-        "video_title": video_data[0]['title'], 
-        "author_id": video_data[0]['author_id'], 
-        "author_icon": video_data[0]['author_thumbnails_url'], 
-        "author": video_data[0]['author'], 
-        "length_text": video_data[0]['length_text'], 
-        "view_count": video_data[0]['view_count'], 
-        "like_count": video_data[0]['like_count'], 
-        "subscribers_count": video_data[0]['subscribers_count'], 
-        "recommended_videos": video_data[1], 
-        "proxy": proxy
+        "request": request, "videoid": v, "videourls": data[0]['video_urls'], "high_quality_url": "",
+        "description": data[0]['description_html'], "video_title": data[0]['title'], 
+        "author_id": data[0]['author_id'], "author_icon": data[0]['author_thumbnails_url'], 
+        "author": data[0]['author'], "length_text": data[0]['length_text'], 
+        "view_count": data[0]['view_count'], "like_count": data[0]['like_count'], 
+        "subscribers_count": data[0]['subscribers_count'], "recommended_videos": data[1], "proxy": proxy
     })
 
 @app.get("/search", response_class=HTMLResponse)
 async def search(q: str, request: Request, page: Union[int, None] = 1, proxy: Union[str, None] = Cookie(None)):
-    search_results = await getSearchData(q, page)
-    return templates.TemplateResponse("search.html", {
-        "request": request, 
-        "results": search_results, 
-        "word": q, 
-        "next": f"/search?q={q}&page={page + 1}", 
-        "proxy": proxy
-    })
+    results = await getSearchData(q, page)
+    return templates.TemplateResponse("search.html", {"request": request, "results": results, "word": q, "next": f"/search?q={q}&page={page + 1}", "proxy": proxy})
 
 @app.get("/hashtag/{tag}")
 async def hashtag_search(tag: str):
@@ -674,68 +397,38 @@ async def hashtag_search(tag: str):
 
 @app.get("/channel/{channelid}", response_class=HTMLResponse)
 async def channel(channelid: str, request: Request, proxy: Union[str, None] = Cookie(None)):
-    channel_data = await getChannelData(channelid)
-    latest_videos = channel_data[0]
-    channel_info = channel_data[1]
-    
-    shorts_videos = []
+    data = await getChannelData(channelid)
+    shorts = []
     try:
         shorts_data = await fetch_short_data_from_external_api(channelid)
-        
-        if isinstance(shorts_data, list):
-            shorts_videos = shorts_data
-        elif isinstance(shorts_data, dict) and "videos" in shorts_data:
-            shorts_videos = shorts_data["videos"]
-        
-    except Exception:
-        shorts_videos = [] 
-        
+        shorts = shorts_data if isinstance(shorts_data, list) else shorts_data.get("videos", [])
+    except: pass
     return templates.TemplateResponse("channel.html", {
-        "request": request, 
-        "results": latest_videos, 
-        "shorts": shorts_videos,  
-        "channel_name": channel_info["channel_name"], 
-        "channel_icon": channel_info["channel_icon"], 
-        "channel_profile": channel_info["channel_profile"], 
-        "cover_img_url": channel_info["author_banner"], 
-        "subscribers_count": channel_info["subscribers_count"], 
-        "tags": channel_info["tags"], 
-        "proxy": proxy
+        "request": request, "results": data[0], "shorts": shorts,  
+        "channel_name": data[1]["channel_name"], "channel_icon": data[1]["channel_icon"], 
+        "channel_profile": data[1]["channel_profile"], "cover_img_url": data[1]["author_banner"], 
+        "subscribers_count": data[1]["subscribers_count"], "tags": data[1]["tags"], "proxy": proxy
     })
 
 @app.get("/playlist", response_class=HTMLResponse)
 async def playlist(list: str, request: Request, page: Union[int, None] = 1, proxy: Union[str, None] = Cookie(None)):
-    playlist_data = await getPlaylistData(list, str(page))
-    return templates.TemplateResponse("search.html", {
-        "request": request, 
-        "results": playlist_data, 
-        "word": "", 
-        "next": f"/playlist?list={list}&page={page + 1}", 
-        "proxy": proxy
-    })
+    data = await getPlaylistData(list, str(page))
+    return templates.TemplateResponse("search.html", {"request": request, "results": data, "word": "", "next": f"/playlist?list={list}&page={page + 1}", "proxy": proxy})
 
 @app.get("/comments", response_class=HTMLResponse)
 async def comments(request: Request, v: str):
-    comments_data = await getCommentsData(v)
-    return templates.TemplateResponse("comments.html", {
-        "request": request, 
-        "comments": comments_data
-    })
+    data = await getCommentsData(v)
+    return templates.TemplateResponse("comments.html", {"request": request, "comments": data})
 
 @app.get("/thumbnail")
 async def thumbnail(v: str):
-    def sync_fetch_thumbnail(video_id: str):
-        res = requests.get(f"https://img.youtube.com/vi/{video_id}/0.jpg", timeout=(1.0, 3.0)) 
-        res.raise_for_status()
-        return res.content
-
     try:
-        content = await run_in_threadpool(sync_fetch_thumbnail, v)
-        return Response(content=content, media_type="image/jpeg")
-    except requests.exceptions.RequestException:
+        res = requests.get(f"https://img.youtube.com/vi/{v}/0.jpg", timeout=3.0)
+        return Response(content=res.content, media_type="image/jpeg")
+    except:
         return Response(status_code=404) 
 
 @app.get("/suggest")
 def suggest(keyword: str):
-    res_text = requests.get("http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q=" + urllib.parse.quote(keyword), headers=getRandomUserAgent()).text
-    return [i[0] for i in json.loads(res_text[19:-1])[1]]
+    res = requests.get(f"http://www.google.com/complete/search?client=youtube&hl=ja&ds=yt&q={urllib.parse.quote(keyword)}", headers=getRandomUserAgent()).text
+    return [i[0] for i in json.loads(res[19:-1])[1]]
