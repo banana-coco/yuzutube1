@@ -36,7 +36,7 @@ MAX_RETRIES = 10
 RETRY_DELAY = 5.0 
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/" 
-EDU_VIDEO_API_BASE_URL = "https://api-five-zeta-55.vercel.app/api/video/"
+EDU_VIDEO_API_BASE_URL = "https://siawaseok.duckdns.org/api/video2/"
 STREAM_YTDL_API_BASE_URL = "https://yudlp-ygug.onrender.com/stream/" 
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 BBS_EXTERNAL_API_BASE_URL = "https://server-bbs.vercel.app"
